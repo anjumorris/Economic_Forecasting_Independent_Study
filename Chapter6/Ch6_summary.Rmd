@@ -1,0 +1,245 @@
+---
+title: 'Chapter 6 Summary: Forecasting with MA Processes'
+output:
+  html_document:
+    df_print: paged
+---
+## SETUP
+
+```{r setup the directory}
+#setwd("/Users/anjali/Documents/university/Econ_5305/code_directory/Chapter6")
+rm(list = ls())
+```
+
+```{r imports}
+library(openxlsx)
+library(readxl)
+library(ggplot2)
+library(dynlm)
+library(forecast)
+```
+## QUESTION 1
+
+#### Part a:  Give example of an economic Time series that behaves like white noise process:
+A white noise process is characterized by auto correlations and partial autocorrelation functions that are equal to zero. Some examples of time series that behave like white noise are stock prices. Indexes like the NASDAQ, DOW, etc. behave like white noise time series that are random and have  almost zero ACF and PACF.
+
+#### Part b: Generate 100 observations from a white noise process
+```{r Generate white noise process from N(0,4) }
+# Generate the white noise process
+set.seed(42) # set seed for reproducibility
+white_noise <- arima.sim(model = list(order = c(0, 0, 0)), n = 100, mean=0, sd=4)
+```
+
+```{r summary white noise}
+# summary of the white noise process
+summary(white_noise)
+cat( "Standard deviation for white noise process ", sd(white_noise))
+```
+
+```{r plot white noise time series}
+# plot time series for the white noise process
+plot.ts(white_noise,col="blue", main="White Noise Series (mean=0, sd=4, seed(42))")
+```
+
+```{r ACF and PACF for white noise process}
+# plot ACF for white noise process
+acf(white_noise,lag.max= 10, plot = TRUE, main = "ACF of  White Noise Series (mean=0, sd=4, seed(42))")
+pacf(white_noise,lag.max= 10, plot = TRUE, main = "PACF of  White Noise Series (mean=0, sd=4, seed(42))")
+```
+
+**Interpretation of Behavior: ** We see that the Auto correlation functions for the White noise time series is very low close to zero and oscillates between +0.2 and -0.2.   
+
+#### Part c: Working with stock indexes
+
+```{r read data of three stock index}
+excel_sheets("ch6_q1_stock_index.xlsx")
+data_1a <- read_excel("ch6_q1_stock_index.xlsx", sheet ="NDX")
+data_1b <- read_excel("ch6_q1_stock_index.xlsx", sheet ="DJIA")
+data_1c <- read_excel("ch6_q1_stock_index.xlsx", sheet ="DJT")
+```
+```{r Stationarizing Transformations for the index}
+# read the time series for the three indexes
+T_NDX<-ts(data_1a$Close,frequency=365,start=c(2008,12,31))
+T_DJIA <-ts(data_1b$Close,frequency=365,start=c(2004,2,1))
+T_DJT <-ts(data_1c$Close,frequency=365,start=c(2004,2,1))
+
+# calculate growth rates by taking the difference of the log (natural log) 
+NDX <- 100*diff(log(T_NDX))
+DJIA <- 100*diff(log(T_DJIA))
+DJT <- 100*diff(log(T_DJT))
+```
+
+```{r Descriptive statistics for the three indexes}
+# NASDAQ index
+cat("NASDAQ Index Growth Descriptive Statistics:\n") 
+summary(NDX)
+cat("Standard deviation: ", sd(NDX))
+
+# Dow Jones Industrial Average Index Growth
+cat("\n\nDow Jones Industrial Average Index Growth Descriptive Statistics:\n") 
+summary(DJIA)
+cat("Standard deviation: ", sd(DJIA))
+
+# NASDAQ index
+cat("\n\nDow Jones Transport Average Index Growth Descriptive Statistics:\n") 
+summary(DJT)
+cat("Standard deviation: ", sd(DJT))
+```
+```{r plots for index growth time series}
+plot(NDX, main="NASDAQ Index Growth, Daily")
+plot(DJIA, main="Dow Jones Industrial Average Index Growth, Daily")
+plot(DJT, main="Dow Jones Transport Average Index Growth, Daily")
+```
+```{r Auto Correlation functions for all three indexes}
+acf(NDX,lag.max= 10, plot = TRUE, main = "ACF for NDX Growth")
+acf(DJIA,lag.max= 10, plot = TRUE, main = "ACF for DJIA Growth")
+acf(DJT,lag.max= 10, plot = TRUE, main = "ACF for DJT Growth")
+```
+**Interpretation:** <br>
+<ul>
+<li>For NDX we see that there is a small  -ve spike r1, however there is a similar spike at 8th period. Although this this is very close to white noise we might be able to use  MA(1) process to model the NDX returns.</li>
+<li>For DJIA index we see that there is a similar -ve spike at r1 and other spikes are much smaller. MA(1) process can be used to try to model this process</li>
+<li>For DJT again has a very small spike at lag one but there are similar spikes athe  6th,7th,9th lags. This looks least promising to be modeled as an MA(1) process and looks very similar to white noise</li>
+</ul>
+
+#### Models
+
+```{r MA(1) process to model NDX}
+model_ndx<-arima(x=NDX,order=c(0,0,1))
+model_ndx
+forecast(model_ndx,h=4)
+```
+```{r MA(1) process to model DJIA}
+model_djia<-arima(x=DJIA,order=c(0,0,1))
+model_djia
+forecast(model_djia,h=4)
+```
+```{r MA(1) process to model DJT}
+model_djt<-arima(x=DJT,order=c(0,0,1))
+model_djt
+forecast(model_djt,h=4)
+```
+**Interpretations of the model: ** The forecasts can be done for only 1 period (1 day ahead) as we are using MA(1). Beyond 1 day the forecast for the model reverts to the unconditional mean. The models are not very good as the AIC values are very high. 
+
+
+## QUESTION 2
+```{r read treasury data }
+data_2 <- read_excel("ch6_q7_q8_treasury_yields.xls")
+View(data_2)
+
+# read the time series for 5-year constant maturity
+T_TCM5Y<-ts(data_2$GS5,frequency=12,start=c(1953,4,1), end =c(2023,3,1))
+```
+
+```{r EDA for 5-year Constant Maturity Yield}
+cat("5-Year Treasury note yield (%):\n") 
+summary(T_TCM5Y)
+cat("Standard deviation: ", sd(T_TCM5Y))
+plot.ts(T_TCM5Y, main="5-Year Treasury note yield, Monthly")
+acf(T_TCM5Y,lag.max= 10, plot = TRUE, main = "ACF for 5-year Constant Maturity Yield")
+```
+**Key Findings:**  
+
+<ul>
+<li>This time-series is not stationary (mean is not constant) since values do not oscillate around the mean (5.281%).</li>
+<li>Based on all the ACF graphs and outputs, all lags have statistically significant positive correlations. From the graphs we can also observe that trends are present in the time series with shorter lags exhibiting larger positive correlations. Hence in these auto-correlations - for all treasury yields - decline slowly with all lags being significant. </li>
+<li>Plotting the time series and ACF confirms the assumption of the presence of trends.** </li>
+<li> We should do some transformations on the series in order that it is stationary. Similar to Fig 6.5 in the textbook we should calculate the growth of change in the 5-year Treasury note yield (%).</li> 
+</ul>
+
+```{r Transformations for 5-year constant maturity yield }
+# calculate growth rates by taking the difference of the log (natural log) 
+TCM5Y <- 100*diff(log(T_TCM5Y))
+```
+
+```{r EDA for growth of 5-year constant maturity yield }
+cat("Change in the 5-Year Treasury note yield - Descriptive Statistics:\n") 
+summary(TCM5Y)
+plot.ts(TCM5Y, main="Change in the 5-Year Treasury note yield (%), Monthly")
+acf(TCM5Y,lag.max= 10, plot = TRUE, main = "ACF for 5-year Constant Maturity Yield - Growth")
+pacf(TCM5Y,lag.max= 10, plot = TRUE, main = "PACF for 5-year Constant Maturity Yield Growth")
+```
+
+**Key Findings:** Looking at the growth series we see that it is second order weakly stationary. The 1 single spike in the ACF indicates that we can propose an MA(1) process and estimate a model.
+
+
+```{r MA(1) process to model 5-year Constant Maturity Yield - Growth }
+model_tcm5y<-arima(x=TCM5Y,order=c(0,0,1))
+model_tcm5y
+forecast(model_tcm5y,h=3)
+```
+**Interpretations:**<br>
+<ul>
+<li>The moving average cannot forecast longer future, and as the horizon goes up, the point forecast as well as the intervals start to be stable without change. In this case as the process is MA(1) after the first forecast it reverts to unconditional mean.</li>
+<li>The has an  aic = 5722.1</li>
+<li>Similarities to section 6.3.1:  The acf pattern for the growth series is similar which shows that the nature of the 5-year constant maturity yield has not changed</li>
+<li>The differences are in volatility. we can see that by updating the data there are more periods of high volatility. Because now we are including both the 2008 recession and 2020 covid-19 crisis.</li>
+</ul>
+
+
+## QUESTION 3
+
+```{r read data for different Treasury Yields}
+# read the time series for 5-year constant maturity
+# set periods to where all series have data so no N/A occurs
+T_5Y<-ts(data_2$GS5,frequency=12,start=c(1962,1,1), end =c(2023,3,1)) # 5year
+T_10Y<-ts(data_2$DGS10,frequency=12,start=c(1962,1,1), end =c(2023,3,1)) # 10 year
+T_1Y<-ts(data_2$DGS1,frequency=12,start=c(1962,1,1), end =c(2023,3,1)) # 1 year
+#T_3Y<-ts(data_2$DGS3,frequency=12,start=c(1962,1,1), end =c(2023,3,1)) # 3 year (not considering for simpler analysis 1 higher and 1 lower should suffice)
+```
+
+```{r Plot allthe treasury yields}
+# Line plot
+plot(T_10Y, type ='l',col = "blue" , xlab= "observation_date", ylab = "Treasury yields (%)")
+lines(T_5Y, type = 'l', col = "black")
+lines(T_1Y, type = 'l', col = "red")
+legend("topleft", c("10-year","5-year","1-year") ,lty = 1, col = c("blue","black","red"))
+
+# ACF plots
+acf(T_10Y,lag.max= 10, plot = TRUE, main = "ACF for 10-year Constant Maturity Yield",na.action = na.pass)
+acf(T_5Y,lag.max= 10, plot = TRUE, main = "ACF for 5-year Constant Maturity Yield",na.action = na.pass)
+acf(T_1Y,lag.max= 10, plot = TRUE, main = "ACF for 1-year Constant Maturity Yield",na.action = na.pass)
+
+```
+**Key Findings**: As in previous question we see very high autocorrelation indicating that the graph has trends . This suggests that adjacent values of the time series are strongly correlated and indicates that if the value of the time series is high at a given point then the value will be high at the adjacent time point. We can also see that the autocorrelation values fall slightly more steeply for 1-year period this occurs because 1-year are more short-term in nature as compared to 10-year maturity?
+
+```{r transformations on all the treasury yields}
+# calculate growth rates by taking the difference of the log (natural log) 
+yield_growth_10Y <- 100*diff(log(T_10Y))
+yield_growth_5Y <- 100*diff(log(T_5Y))
+yield_growth_1Y <- 100*diff(log(T_1Y))
+```
+
+
+```{r analysis on all treasury yield maturity }
+
+# Line plot
+plot(yield_growth_10Y, type ='l',col = "blue" , xlab= "observation_date", ylab = "Treasury yield Growth Change (%)")
+lines(yield_growth_5Y, type = 'l', col = "black")
+lines(yield_growth_1Y, type = 'l', col = "red")
+legend("topleft", c("10-year","5-year","1-year") ,lty = 1, col = c("blue","black","red"))
+
+# ACF plots
+acf(yield_growth_10Y,lag.max= 10, plot = TRUE, main = "ACF for 10-year Constant Maturity Yield - Growth ",na.action = na.pass)
+acf(yield_growth_5Y,lag.max= 10, plot = TRUE, main = "ACF for 5-year Constant Maturity Yield - Growth ",na.action = na.pass)
+acf(yield_growth_1Y,lag.max= 10, plot = TRUE, main = "ACF for 1-year Constant Maturity Yield - Growth ",na.action = na.pass)
+```
+```{r values of acf for all three series}
+acf(yield_growth_10Y,lag.max= 10, plot =FALSE, main = "ACF for 10-year Constant Maturity Yield - Growth ",na.action = na.pass)
+acf(yield_growth_5Y,lag.max= 10, plot = FALSE, main = "ACF for 5-year Constant Maturity Yield - Growth ",na.action = na.pass)
+acf(yield_growth_1Y,lag.max= 10, plot = FALSE, main = "ACF for 1-year Constant Maturity Yield - Growth ",na.action = na.pass)
+```
+
+**Key findings:** All the ACF plots show 1 distinct spike indicating that we can use MA(1) process to estimate an MA model. For the 1-Year yield we see that the autocorrelation value at the first lag is higher as compared to 5-Year. And 5-year is higher as compared to 10-Year. 0.351 > 0.284 > 0.270. This means that for short duration maturity yields there is higher correlation between current period and the last period.
+
+
+```{r models for all treasury yields}
+model_10y<-arima(x=yield_growth_10Y,order=c(0,0,1))
+model_10y
+model_5y<-arima(x=yield_growth_5Y,order=c(0,0,1))
+model_5y
+model_1y<-arima(x=yield_growth_1Y,order=c(0,0,1))
+model_1y
+```
+
+
