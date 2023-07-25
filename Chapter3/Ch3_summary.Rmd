@@ -1,0 +1,284 @@
+---
+title: "Chapter 3 Problem Summary"
+output: html_notebook
+---
+
+## SETUP
+
+```{r setup the directory}
+#setwd("/Users/anjali/Documents/university/Econ_5305/code_directory/Chapter3")
+rm(list = ls())
+```
+
+```{r imports}
+library(readxl)
+library(ggplot2)
+library(dynlm)
+```
+
+## QUESTION 1
+
+```{r read data for question 1}
+q1_data <- read_excel("q1_data.xls")
+View(q1_data)
+```
+#### EDA
+
+1. Plot Real personal consumption and real personal income
+```{r}
+
+# Scatter plot
+ggplot(q1_data,aes(x=DisposableIncome, y=PersonalConsumption_Calculated)) + geom_point()
+ggplot(q1_data,aes(x=PersonalConsumption_Calculated, y=DisposableIncome)) + geom_point()
+
+# Line plot
+ggplot( q1_data, aes(x = observation_date )) +
+  #add one line for Export
+  geom_line(aes(y = DisposableIncome , colour = "DisposableIncome") ) + 
+  # add another line for Import
+  geom_line(aes(y = PersonalConsumption_Calculated , colour = "PersonalConsumption_Calculated")) +
+  theme_classic() + 
+  scale_color_manual(name = '',
+                       breaks = c( "DisposableIncome" , "PersonalConsumption_Calculated" ),
+                       values = c( "DisposableIncome" =  'blue' ,
+                                   "PersonalConsumption_Calculated" = 'maroon' )
+                       ) + 
+  ylab( "Billions of Chained 2012 dollars") +
+  xlab("Observation Date")
+
+```
+**Key Findings:**
+<ul>
+<li>Both series have clear upward trends and are not stationary as the mean is not constant.</li>
+<li>They appear to move in the same direction and at similar slopes.</li>
+<li>However, you can see that in 2020 disposable income shot up but personal consumption went down in opposite direction this is interesting phenomenon.</li>
+<li>Consumption is always lower than disposable income which makes sense since consumption is typically a portion of income.</li>
+</ul>
+
+### Part a. Calculate growth rates of real consumption and disposable personal income.
+
+```{r calculate growth rates}
+T_CONSUMPTION<-ts(q1_data$PersonalConsumption_Calculated,frequency=12,start=c(1959))
+T_INCOME <- ts(q1_data$DisposableIncome,frequency=12,start=c(1959))
+
+# calculate growth rates by taking the difference of the log (natural log) 
+G_CONSUMPTION <- 100*diff(log(T_CONSUMPTION))
+G_INCOME <- 100*diff(log(T_INCOME))
+
+```
+
+```{r descriptive statistics}
+summary(G_CONSUMPTION)
+summary(G_INCOME)
+cat( "Standard deviation for Consumption Growth: ", sd(G_CONSUMPTION),"\nStandard deviation for Personal Income Growth:", sd(G_INCOME))
+cat ("\nLinear correlation between the two series: ", cor(G_CONSUMPTION,G_INCOME))
+```
+**Note**:  The standard deviation of Personal Income Growth is higher than Personal Consumption Growth. This indicates that volatility is higher for Personal Income Growth as compared to Consumption Growth. We also see that the mean is very similar for the two as well and close to zero.
+```{r scatter plot for income-consumption}
+# Scatter plot
+
+plot(G_INCOME, G_CONSUMPTION, main="Scatterplot of INCOME - CONSUMPTION",
+   xlab="Income Growth ", ylab="Consumption Growth  ")
+```
+
+
+```{r line plot for income consumption}
+# Line plot
+plot(G_INCOME, type ='l',col = "blue" , xlab= "observation_date", ylab = "Growth Percentage")
+lines(G_CONSUMPTION, type = 'l', col = "red")
+legend("topleft", c("Personal Income Growth ","Personal Consumption Growth ") ,lty = 1, col = c("blue","red"))
+```
+**Observations:** The time series graph clearly shows that Income Growth is much more volatile. Additionally, we can see that after performing the log difference transformation the growth series is weakly stationary. Constant mean, near constant variance, except for some periods such as COVID-19, 2008 recession, etc. (shock events).
+
+**Explaining Volatility in Income vs. Consumption:** Over time, the growth in disposable income has exhibited greater volatility compared to the growth in personal consumption. Personal consumption growth tends to move within a certain range, regardless of whether disposable income increases or decreases, which aligns with the permanent income model(= individuals base their consumption patterns on their long-term, or permanent, income rather than their current income). However, during the pandemic, personal consumption experienced a significant decline. This does not necessarily signify a break in the **permanent income model**, but rather a result of the significant changes in our lifestyles due to quarantine and social distancing measures.
+
+In addition, COVID-19 may have also made people feel uncertain in terms of their future permanent income prospects and this along with lifestyle changes could have caused consumption to decline.
+
+#### Part b: Regression (Contemporaneous Correlation)
+Regress consumption growth on disposable income growth. Interpret the estimated resulted
+
+```{r OLS Model Consumption - Income }
+model_1a <- dynlm(G_CONSUMPTION ~ G_INCOME)
+summary(model_1a)
+#plot(model_1a)
+```
+**Interpretation of the Model**
+As per the model G_CONSUMPTION = 0.26964 + (-0.0218)*G_INCOME. According to the model, 1% of disposable income logged growth increase associated with  0.02618%  decreased of personal consumption logged growth. The B1 value is not significant at the 5% level. The Linear correlation between the two series:  -0.04348076 as calculated above is also close to zero and slightly negative which corresponds to the OLS Model results we are getting. The overall F-statistic for the model is also not very high and the overall model is not significant
+
+Interestingly the intercept value has very high significance which can be explored further. 
+
+#### Part c: (OLS Models with Lag)
+
+##### Model 1: Single Lag
+```{r OLS Model Consumption - Income with single lag }
+model_1b<-dynlm(G_CONSUMPTION ~ G_INCOME + stats::lag(G_INCOME,-1))
+summary(model_1b)
+#plot(model_1b)
+```
+**Interpretation of the Model:** Although adding lagged Disposable Income growth, the model is still not significant at the 5% level and have 0.2064% of adjusted R-squared. When 1% of Disposable Income growth increase associated with 0.009442% of personal consume logged growth decrease controlling lagged disposable income growth. Also when 1% of lagged Disposable Income growth increase associated with  0.0356% of personal consume logged growth increase controlling personal consume logged growth. 
+
+##### Model 2: Mutliple Lags
+```{r OLS Model Consumption - Income with 4 lags}
+model_1c<-dynlm(G_CONSUMPTION ~ stats::lag(G_INCOME,-1) + stats::lag(G_INCOME,-2) + stats::lag(G_INCOME,-3) + stats::lag(G_INCOME,-4))
+summary(model_1c)
+#plot(model_1c)
+```
+**Interpretation of the model**
+By adding more lag period from -1 to -4 we see that the we are able to get a statistically significant mode. The F-statistic is high at 7.748 with a very small p-value. Of the 4 coefficients in the we see that B1,B2,B3 are also highly statistically significant upto 99% confidence. B4 however is is not statistically significant. This indicates that there is an adjustment lag between income and consumption. People tend to consume based on their past income up-to about 3 period prior (3-months ago).    
+
+---
+
+## QUESTION 2
+#### Load Data
+```{r load data for question 2}
+q2_data <- read_excel("q2_data_v2.xls")
+View(q2_data)
+T_CPI<-ts(q2_data$CPI,frequency=12,start=c(1960))
+T_TB3MS <- ts(q2_data$TB3MS,frequency=12,start=c(1960))
+```
+
+#### EDA on CPI and 3 Month Treasury Bill Rate
+
+```{r descriptive statistics for CPI and T-bill rate}
+summary(T_CPI)
+summary(T_TB3MS)
+cat( "Standard deviation for Consumption Growth: ", sd(T_CPI),"\nStandard deviation for Personal Income Growth:", sd(T_TB3MS))
+```
+```{r plots for CPI and T-bill rate}
+plot.ts( T_CPI, main = "Consumer Price Index , Monthly", sub = "Units: Index", ylab = "Index based on 2015")
+plot.ts( T_TB3MS, main = "3 Month Treasury Bill interest rate, Monthly", sub = "Units: percent (%)", ylab = "Treasury Bill interest rate %")
+```
+
+#### Calculate monthly inflation and real interest rates
+```{r visualize the data as is}
+# calculate monthly inflation by calculating the difference of log  
+monthly_inflation <- 100*diff(log(T_CONSUMPTION))
+
+# calculate expost real interest rate
+expost_real_interest_rate <- T_TB3MS - monthly_inflation 
+```
+
+```{r summary statistics for inflation and real interest rates }
+# Print the summary statistics of inflation and real interest rate
+cat("Summary Statistics for Monthly Inflation:\n")
+summary(monthly_inflation)
+cat("\nSummary Statistics for Real Interest Rate:\n")
+summary(expost_real_interest_rate)
+```
+
+#### Add real interest rate to equation 1b
+
+```{r line plot for monthly inflation and real interest rate}
+# Line plot
+plot(expost_real_interest_rate, type ='l',col = "green" , xlab= "observation_date", ylab = "Growth Percentage / Rate  - (%)")
+lines(G_INCOME, type = 'l', col = "blue")
+lines(G_CONSUMPTION, type = 'l', col = "red")
+legend("topleft", c("Real Interest Rate","Personal Income Growth ","Personal Consumption Growth ") ,lty = 1, col = c("green","blue","red"))
+```
+
+**Observations:** We can see the the negative real interest rates that were maintained by the government during COVID-19 shock  to possibly improve the low consumption and give respite to businesses.  
+
+
+#### Regress consumption growth on disposable income growth and Real Interest Rate. Interpret the estimated resulted
+
+```{r OLS Model Consumption - Income + Real Interest Rate }
+model_2 <- dynlm(G_CONSUMPTION ~ G_INCOME + expost_real_interest_rate)
+summary(model_2)
+#plot(model_2)
+```
+**Interpretation of the Model:** In the contemporaneous model we that B2 = -0.06652 and the t-statistic is high at -7.448 which is statistically significant at 99%.  We see that consumption and real interest rate are negatively related. When interest is high people tend to consume less. The f-statistic of the overall model is also high and significant. Interest Rates are better contemporaneous predictor of consumption as compared to income?      
+
+
+---
+
+## QUESTION 3
+
+---
+#### Read data 
+```{r read all the sheet}
+excel_sheets("q3_data.xls")
+data_3a <- read_excel("q3_data.xls", sheet ="Q3_a")
+data_3b <- read_excel("q3_data.xls", sheet ="Q3_b")
+data_3c <- read_excel("q3_data.xls", sheet ="Q3_c")
+data_3d <- read_excel("q3_data.xls", sheet ="Q3_d")
+```
+#### Part a: US real GDP
+```{r Plot Time Series for US Real GDP}
+US_real_GDP <- ts( data_3a$GDPC1, start = c(1947, 1), frequency = 4) 
+plot(US_real_GDP 
+     , main = "US Real GDP, Quarterly (1947 Q1 - 2022 Q4)"
+     , sub = "Units: Billions of Chained 2012 Dollars, Seasonally Adjusted Annual Rate "
+     , ylab = "USD"
+     )
+
+```
+**Key Findings**<br>
+Periodicity: Quarterly <br>
+Units: Billions of Chained dollars as per 2012 <br> 
+The underlying stochastic process is **not stationary**. There is an upward trend and all random variables do not have the same mean.
+
+#### Part b: The exchange rate of the Japanese Yen against the US Dollar
+```{r Plot Time Series for Japanese Yen}
+yen_exch_rate <- ts( data = data_3b$DEXJPUS, start = c(2018,4,2), frequency = 365 ) 
+
+plot(yen_exch_rate
+     , main = "The exchange rate of the Japanese yen against the US dollar, Daily"
+     , sub = "Units: Japanese Yen to One U.S. Dollar"
+     , ylab = "Japanese Yen"
+     )
+
+```
+**Key Findings**<br>
+Periodicity: Daily <br>
+Units: Japanese yen to 1 Dollar <br> 
+While between 2018 and 2020, the rate fluctuates within the same range, between 2020 and early 2021 there is a sharp upward trend and since 2021 there was a downward trend. All random variables do not have the same mean and variance, and covariance depends on time. Hence, the underlying processes are **non-stationary**. 
+
+#### Part c: The 10-year US Treasury constant maturity yield
+```{r Plot Time Series for 10-year U.S. Treasury constant maturity yield}
+
+US_treasury_maturity_yield_minus_2year <- ts( data = data_3c$T10Y2Y, start = c(1982, 1 , 4 ) ,frequency = 365) 
+US_treasury_maturity_yield_minus_3month<- ts( data = data_3c$T10Y3M, start = c(1982, 1 , 4 ),frequency = 365) 
+
+plot.ts( US_treasury_maturity_yield_minus_2year
+     , main = "10-year US Treasury constant maturity yield - 2Yconstant maturity"
+     , sub = "Units: Percent (%)"
+     , ylab = "Maturity Yield (%)"
+     )
+plot.ts( US_treasury_maturity_yield_minus_3month
+     , main = "10-year US Treasury constant maturity yield - 3Mo constant maturity"
+     , sub = "Units: Percent (%)"
+     , ylab = "Maturity Yield (%)"
+     )
+
+
+```
+**Key Findings** <br>
+Periodicity: Daily <br>
+Units: Maturity Yield in % <br> 
+**Not Stationary**
+The 10-year US Treasury constant maturity yield:  The data is within one range before mid-1982 where we see a big upward trend, then stays within a different range from mid-1982 and early 1984 where we see a big drop in the data, then a quick recovery in the first 3 months of 1984 and the values stay in a higher range until 1985.  The mean, variance and covariance of the random variables depend on time in this time series.  Hence, the underlying processes are non-stationary
+
+We can see the peak and the bottom of the wave is not regular. Meanwhile, the range is unstable at the same time. Combining the finding from the plot and also the data display. We can conclude that this 10-year US treasury constant maturity yield is not stationary.
+
+#### Part d: US unemployment Rate 
+
+```{r}
+US_unemployment_rate <- ts( data = data_3d$UNRATE, start = c(1948, 1 ) , end = c( 2023 , 2 ) ,frequency = 12) 
+
+plot.ts( US_unemployment_rate
+     , main = "The US Unemployment rate, Monthly"
+     , sub = "Units: Percent (%)"
+     , ylab = "Unemployment rate (%)"
+     )
+```
+```{r descriptive statistics for Unemployment rate}
+summary(US_unemployment_rate)
+cat( "Standard deviation for Unemployment Rate: ", sd(US_unemployment_rate))
+```
+
+**Key Findings**<br>
+Periodicity: Monthly <br>
+Units: Unemployment Rate as Percentage <br> 
+From 1980 to 2020 the time series **appears** to be first order weakly stationary since the mean appears to be constant and the values fluctuate across the mean (5.7%). It does not look second order stationary that is variance is different at different times. For instance, we can see that there are periods with higher fluctuations like the 1980s and 2020 where the variance is higher than say the 1960.    
+**We would need to do a bit more analysis to understand whether it is second order weakly stationary.**
+
