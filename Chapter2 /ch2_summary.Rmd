@@ -1,0 +1,214 @@
+---
+title: 'Chapter 2: Review of the Linear Regression Model'
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+### Setup
+```{r load data}
+#setwd("/Users/anjali/Documents/university/Econ_5305/Econ5305/Chapter2")
+library(readxl)
+rm(list = ls())
+data <- read_excel("FRED_series_GDP_SP500_complete.xlsx")
+View(data)  
+```
+
+
+### Question 2: EDA
+Download the U.S. GDP quarterly growth rates and the Standard & Poor’s (SP) 500 quarterly returns. For both series, compute their descriptive statistics and their histograms. Are these two series contemporaneously correlated? Comment on your findings.
+
+```{r descriptive statistics}
+summary(data)
+```
+```{r Histograms}
+hist(data$GDP_PCH)
+hist(data$SP500_PCH)
+```
+```{r plotting the series together}
+library(ggplot2)
+# Scatter plot
+ggplot(data,aes(x=SP500_PCH, y=GDP_PCH)) + geom_point()
+ggplot(data,aes(x=GDP_PCH, y=SP500_PCH)) + geom_point()
+
+# Line plot
+ggplot( data, aes(x = observation_date )) +
+  #add one line for Export
+  geom_line(aes(y = GDP_PCH , colour = "GDP_PCH") ) + 
+  # add another line for Import
+  geom_line(aes(y = SP500_PCH , colour = "SP500_PCH")) +
+  theme_classic() + 
+  scale_y_continuous(limits = c(-10,15)) + 
+  scale_color_manual(name = '',
+                       breaks = c( "GDP_PCH" , "SP500_PCH" ),
+                       values = c( "GDP_PCH" =  'blue' ,
+                                   "SP500_PCH" = 'maroon' )
+                       ) + 
+  ylab( "GDP growth rate / S&P 500 returns") +
+  xlab("Observation Date")
+```
+```{r correlation}
+cat ("Linear correlation between the two series: ", cor(data$GDP_PCH,data$SP500_PCH))
+cat ("\nPolynomial(2) Correlation between the two series: ", cor(data$GDP_PCH,data$SP500_PCH^2))
+cat ("\nPolynomial(3) Correlation between the two series: ", cor(data$GDP_PCH,data$SP500_PCH^3))
+cat ("\nPolynomial(4) Correlation between the two series: ", cor(data$GDP_PCH,data$SP500_PCH^4))
+```
+```{r volatility}
+cat( "Standard deviation for GDP: ", sd(data$GDP_PCH),"\nStandard deviation for SP500:", sd(data$SP500_PCH))
+```
+
+
+**Key Findings:**
+<ul>
+<li>Difference in Volatility: GDP and S&P stayed in a similar range, but S&P is more more volatile considering its histogram and the standard deviation which is higher almost double (4.5 vs 2.2) as compared to GDP.GDP and S&P move towards the same direction.</li>
+<li> From scatter plot: GDP and S&P are likely to have a linear relationship based on the scatter plot there is linear correlation of 0.4891. However it is interesting to note that using polynomial degree 2 the correlation is 0.58 and therefore there might be some  some non-linear correlation possibilities that could also be explored. This is more open ended and with more data maybe clearer patterns can be seen.</li>
+<li> Line Graphs: They move on par specially on big swings like during the COVID crisis but often have opposite movement in some years like in around 2016.</li>
+</ul>
+
+### Question 3:  Run OLS for Following Models
+#### Model a: Y(t) = B0 + B1.X(t)
+```{r model a OLS}
+model_a <- lm(data$GDP_PCH ~ data$SP500_PCH)
+summary(model_a)
+#plot(model_a)
+```
+
+#### Model b: Y(t) = B0 + B1.X(t-1)
+```{r setup up time series}
+library(dynlm)
+# The frequency is the number of observations per year. 
+# Annual	1; Quarterly	4; Monthly	12; Weekly	52
+T_GDP<-ts(data$GDP_PCH,frequency=4, start=c(2013,7)) 
+T_SP500<-ts(data$SP500_PCH,frequency=4, start=c(2013,7))
+
+# if they are time series
+is.ts(T_GDP)
+is.ts(T_SP500)
+```
+
+```{r model b OLS}
+model_b<-dynlm(T_GDP ~ stats::lag(T_SP500,-1))
+summary(model_b)
+#plot(model_b)
+```
+```{r model c OLS}
+model_c<-dynlm(T_GDP ~ stats::lag(T_SP500,-1) + stats::lag(T_SP500,-2) + stats::lag(T_SP500,-3) + stats::lag(T_SP500,-4))
+summary(model_c)
+#plot(model_c)
+```
+```{r model d OLS }
+model_d<-dynlm(T_GDP ~ stats::lag(T_SP500,-1) + stats::lag(T_SP500,-2) + stats::lag(T_SP500,-3) + stats::lag(T_SP500,-4) + stats::lag(T_GDP,-1))
+summary(model_d)
+#plot(model_d)
+```
+
+
+### Question 4: t-ratio tests (a) and (b)
+
+```{r t-ratio test helper method}
+# Helper method for running t-ratio test on any parameter
+
+t_ratio_test.run <-function (m,constant=0,index =1,confidence = 0.05) {
+  index <- index + 1
+  model_df <- df.residual(m)
+  model_summary <- summary(m)
+  Beta <- model_summary$coefficients[index,1]
+  std_error <- model_summary$coefficients[index,2]
+  
+  t_statistic <- (Beta - constant) / std_error
+
+  two_tailed <- qt(p=confidence/2, df= model_df, lower.tail=FALSE)
+  right_tailed <- qt(p=confidence, df= model_df, lower.tail=FALSE)
+  left_tailed <- qt(p=confidence, df= model_df, lower.tail=TRUE)
+
+  cat(" t-statistic: ",t_statistic,"\n",
+      "t-critical two tailed: [", - two_tailed,",", two_tailed,"]\t Reject Hypothesis = ", t_statistic < -two_tailed | t_statistic > two_tailed,"\n",
+      "t-critical right tailed: ", right_tailed,"\t Reject Hypothesis = ", t_statistic > right_tailed,"\n",
+      "t-critical left tailed: ", left_tailed,"\t Reject Hypothesis = ", t_statistic < left_tailed
+      )
+
+}
+
+
+```
+
+For **model a:** conduct t-ratio test for the following <br>
+1. H0: B1 = 0, H1: b1 != 0 <br>
+2. H0: B1 = 0, H1: b1 > 0 <br>
+3. H0: B1 = 0, H1: b1 < 0 
+
+```{r run t-ratio test for model a}
+c <- 0
+j <- 1
+t_ratio_test.run(model_a,constant = c,index = j,confidence = 0.05)
+```
+**Key Findings:** The t-statistic is quite large at 3.36. We can reject the null hypothesis in 1. We can similarly reject the null hypothesis in 2 and go with the alternate hypothesis B1 > 0. In 3 however we cannot reject the null hypothesis for the alternate that B1 < 0.
+
+For **model b:** conduct t-ratio test for the following <br>
+1. H0: B1 = 0, H1: b1 != 0 <br>
+2. H0: B1 = 0, H1: b1 > 0 <br>
+3. H0: B1 = 0, H1: b1 < 0 
+
+```{r run t-ratio test for model b}
+c <- 0
+j <- 1
+t_ratio_test.run(model_b,constant = c,index = j,confidence = 0.05)
+```
+**Key Findings: ** We cannot reject the null hypothesis for 1,2,3. B1 is not statistically significant in the model. This also indicated by the very small t-statistic of 0.1721
+
+### Question 5: Conduct t-ratio test for every single coefficient and F-test for model c
+
+```{r modified helper function for t-ratio-test only two-tailed}
+# two-tailed version of the function
+t_ratio_test_two_tailed.run <-function (m,constant=0,index =1,confidence = 0.05) {
+  index <- index + 1
+  model_df <- df.residual(m)
+  model_summary <- summary(m)
+  Beta <- model_summary$coefficients[index,1]
+  std_error <- model_summary$coefficients[index,2]
+  
+  t_statistic <- (Beta - constant) / std_error
+
+  two_tailed <- qt(p=confidence/2, df= model_df, lower.tail=FALSE)
+  
+  cat("\nt-ratio test for Beta =", index - 1, "\nt-statistic: ",t_statistic,
+      "\nt-critical two tailed: [", - two_tailed,",", two_tailed,"]\t Reject Hypothesis = ", t_statistic < -two_tailed | t_statistic > two_tailed
+      )
+
+}
+
+```
+
+#### Conduct the t-ratio tests for all coefficients
+
+```{r t-ratio tests for model c}
+t_ratio_test_two_tailed.run(model_c,constant = 0,index = 1,confidence = 0.05)
+t_ratio_test_two_tailed.run(model_c,constant = 0,index = 2,confidence = 0.05)
+t_ratio_test_two_tailed.run(model_c,constant = 0,index = 3,confidence = 0.05)
+t_ratio_test_two_tailed.run(model_c,constant = 0,index = 4,confidence = 0.05)
+```
+**Key Finding: ** 
+<ul>
+<li>For all the coefficients we cannot reject the null hypothesis at a confidence level of 95% and 90%. The Coefficients are not statistically significant.</li> 
+<li>We get a result of 0.163 F statistic which gives the p-value of 0.9554 which is larger than significance level at 0.1. Hence we fail to reject H0 all the coefficient are not significantly different from zero at 90%.</li>
+<li>We can conclude the same by looking at the all the rows in the model summary and see that all the t-statistic values are small between 1 and -1.</li>
+</ul>
+
+### Question 6: Conduct t-ratio test for every single coefficient and F-test for model d
+
+#### Conduct the t-ratio tests for all coefficients
+
+```{r t-ratio test for model d}
+t_ratio_test_two_tailed.run(model_d,constant = 0,index = 1,confidence = 0.10)
+t_ratio_test_two_tailed.run(model_d,constant = 0,index = 2,confidence = 0.10)
+t_ratio_test_two_tailed.run(model_d,constant = 0,index = 3,confidence = 0.10)
+t_ratio_test_two_tailed.run(model_d,constant = 0,index = 4,confidence = 0.10)
+t_ratio_test_two_tailed.run(model_d,constant = 0,index = 5,confidence = 0.10)
+
+```
+**Key Finding: ** 
+<ul>
+<li>For all the coefficients we cannot reject the null hypothesis at a confidence level of 95% and 90%. The Coefficients are not statistically significant.</li>
+<li> We get a result f-statistic result of 0.5838 on 5 and 28 DF, which is very low which gives the p-value of 0.9554 which is larger than significance level at 0.05. Hence we fail to reject H0 all the coefficient are not significantly different from zero at 95%. </li>
+</ul>
+
