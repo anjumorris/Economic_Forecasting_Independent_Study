@@ -1,0 +1,244 @@
+---
+title: "Chapter 10 Summary"
+output: html_notebook
+---
+
+## Setup
+
+```{r setup the directory}
+setwd("/Users/anjali/Documents/university/Econ_5305/code_directory/Chapter10")
+rm(list = ls())
+```
+
+```{r imports}
+library(openxlsx)
+library(readxl)
+library(ggplot2)
+library(dynlm)
+library(forecast)
+library(urca)
+```
+
+## Question 5
+
+```{r read data on mortage debt}
+data <- read_excel("ch10_q5_data.xls")
+
+# read the complete time series
+MORTGAGE<-ts(data$MORTGAGE, frequency =4, start = c(1951,10)) 
+
+# split the data. Don't consider the last 12 periods 
+last_index <- length(MORTGAGE)
+MORTGAGE_split<-ts(data$MORTGAGE[1:(last_index - 12)], frequency =4, start = c(1951,10))
+```
+
+
+```{r plot the data }
+summary(data)
+plot(MORTGAGE)
+```
+**Key Findings:** The plot shows that there is an upward trend. There is break in the trend around the early 2010s (2012 - 2014). The plot also clearly does not look linear. It looks polynomial from the plot
+
+```{r try 3}
+acf(MORTGAGE)
+pacf(MORTGAGE)
+acf(diff(MORTGAGE))
+pacf(diff(MORTGAGE))
+ur.df(MORTGAGE,type="trend",lags=0)
+ur.df(diff(MORTGAGE),type="trend",lags=0)
+```
+#### This also looks like it has a unit root. Why are we not doing the unit root testing here?
+
+#### Model1: Polynomial model of degree 4 
+```{r polynomial model of degree 4}
+n = length(MORTGAGE)
+trend1 = ts(c(1:n), frequency = 4, start = c(1951,1)) 
+model_poly4 <-lm(MORTGAGE ~ poly(trend1, 4, raw=TRUE)) 
+summary(model_poly4) 
+AIC(model_poly4)
+BIC(model_poly4)
+```
+
+```{r residuals for model 1 - polynomial 4 }
+plot.ts(MORTGAGE, ylab="", lty=2) 
+fit <- ts(fitted(model_poly4), frequency = 4, start=c(1951,1)) 
+res <- ts(resid(model_poly4), frequency = 4, start=c(1951,1)) 
+lines(fit, col="red", lty=2) 
+par(new=TRUE) 
+plot.ts(res, axes=FALSE, ylab="", col="blue") 
+axis(side=4, at = pretty(range(res))) 
+legend("topleft", legend=c("Actual", "Fit", "Res"), lty=c(2,2,1), col=c("black", "red", "blue"))
+acf(res)
+pacf(res) 
+```
+
+The coefficients in the model are quite significant. Compare to the Table 10.2, the R-squared decreased about 2.5%, but still are high as 97%. And t-test and F-test are significant at the 0.001% level.  But AIC and BIC are very high and the the fitted plot has gaps from the data. Also the residual and ACF have trends. Therefore the polynomial model looks not proper for the data. And PACF has 5 sparks, so I will try to add AR terms 1 to 5. 
+
+##### Model 2: using log transformation (my model)
+```{r diff polynomial model of degree 4}
+logMORTGAGE<- log(MORTGAGE)
+n = length(logMORTGAGE)
+trend1 = ts(c(1:n), frequency = 4, start = c(1951,1)) 
+model_log <-lm(logMORTGAGE ~ poly(trend1, 2, raw=TRUE)) 
+summary(model_log) 
+AIC(model_log)
+BIC(model_log)
+```
+```{r weird log model}
+plot.ts(logMORTGAGE, ylab="", lty=2) 
+fit <- ts(fitted(model_log), frequency = 4, start=c(1951,1)) 
+res <- ts(resid(model_log), frequency = 4, start=c(1951,1)) 
+lines(fit, col="red", lty=2) 
+par(new=TRUE) 
+plot.ts(res, axes=FALSE, ylab="", col="blue") 
+axis(side=4, at = pretty(range(res))) 
+legend("topleft", legend=c("Actual", "Fit", "Res"), lty=c(2,2,1), col=c("black", "red", "blue"))
+acf(res)
+pacf(res) 
+```
+**Notes on this model**: The residuals still have a pattern in them that looks like AR 1 to 5. R-squared is almost 1. AIC & BIC are improved but they are still high. The residual looks like to have a constant mean, but the variance get wider as time goes. ACF lost the trend but PACF has sparks in the middle.  
+
+#### Model 3: Jibok's Model with 5 lags included. 
+
+```{r Model with 5 lags and poly 4}
+n = length(MORTGAGE)
+trend1 = ts(c(1:n), frequency = 4, start = c(1951,1)) 
+model_poly_ar <- dynlm(MORTGAGE ~ trend1+I(trend1^2)+I(trend1^3)+I(trend1^4)+lag(MORTGAGE,-1)+lag(MORTGAGE,-2)+lag(MORTGAGE,-3)+lag(MORTGAGE,-4)+lag(MORTGAGE,-5)) #AR(2) + polynomial(4) trend
+summary(model_poly_ar)
+AIC(model_poly_ar) 
+BIC(model_poly_ar)
+```
+
+```{r residuals acf , pacf for model 3}
+plot.ts(MORTGAGE, ylab="", lty=2) 
+fit <- ts(fitted(model_poly_ar), frequency = 4, start=c(1951,1)) 
+res <- ts(resid(model_poly_ar), frequency = 4, start=c(1951,1)) 
+lines(fit, col="red", lty=2) 
+par(new=TRUE) 
+plot.ts(res, axes=FALSE, ylab="", col="blue") 
+axis(side=4, at = pretty(range(res))) 
+legend("topleft", legend=c("Actual", "Fit", "Res"), lty=c(2,2,1), col=c("black", "red", "blue"))
+acf(res)
+pacf(res) 
+```
+
+
+```{r Jiboks code }
+MORTGAGE_part<-ts(data$`MORTGAGE`[1:260], frequency =4, start = c(1951,10)) 
+original<-ts(data$`MORTGAGE`[1:272], frequency =4, start = c(1951,10)) 
+trend1 = ts(c(1:260), frequency = 4, start = c(1951,10)) 
+model <- dynlm(MORTGAGE_part ~ trend1+I(trend1^2)+I(trend1^3)+I(trend1^4)+lag(MORTGAGE_part,-1)+stats::lag(MORTGAGE_part,-2)+stats::lag(MORTGAGE_part,-3)+stats::lag(MORTGAGE_part,-4)+stats::lag(MORTGAGE_part,-5)) #AR(2) + polynomial(4) trend
+fcast=union(MORTGAGE_part, c(261:272))
+fpoly = ts(c(261:272), frequency = 4, start = c(2016,10))
+print(fpoly)
+#print(MORTGAGE_part)
+for(i in 1:12){
+  fcast[260+i]<-coef(model)[1] +coef(model)[2]*(fpoly[i]) +coef(model)[3]*((fpoly[i])^2) 
+              +coef(model)[4]*((fpoly[i])^3)+coef(model)[5]*((fpoly[i])^4)
+              +coef(model)[6]*fcast[259+i]+coef(model)[7]*fcast[258+i]+coef(model)[8]*fcast[257+i]
+              +coef(model)[9]*fcast[256+i]+coef(model)[10]*fcast[255+i] 
+}
+
+fcast = ts(fcast, frequency = 4, start = c(1951,10))
+ts.plot(fcast) #plot of the forecast
+lines(original, col=6)
+lines(MORTGAGE_part, col=4)
+```
+## Don't know why my forecast looks totally different ?
+
+## Question 10
+#### 10.1 Read data on total hours worked in United States(Index)
+```{r  Read data on total hours worked}
+data_2 <- read_excel("ch10_q10_data.xls")
+View(data_2)
+```
+
+#### 10.2 Preliminary EDA
+```{r EDA Unemployment Level}
+# read the time series total hours worked index
+US<-ts(data_2$hours_worked_index,frequency=12,start=c(2006,3), end =c(2023,3))
+cat("Hours worked in United States(Index)") 
+summary(US)
+cat("Standard deviation: ", sd(US))
+plot.ts(US, main="Hours worked in United States(Index), Monthly",ylab ="index(2007)")
+```
+
+**Notes** There is an upward sloping trend that we can see visually. The series is nonstationary.There is break in trend at some points like 2010 and 2020. There appears to be drift as well.
+
+```{r Test for unit Root}
+ur.df(US,type="drift",lags=0)
+ur.df(diff(US),type="drift",lags=0)
+```
+**There is a unit root:(integration order = 1)** Since the test-statistic is -0.85 (-0.85 not less than -2.9) we cannot reject the null hypothesis. Therefore there is a unit root. DF testing on the diff(T_US) indicates that there is no unit root therefore there is only 1 unit root of the integration order = 1
+
+```{r Linear Modeling }
+library(dynlm) #use dynlm package
+dUS<-diff(US)
+model <-dynlm(dUS ~ lag(US,-1)) #regression correspondingg to the above ADF test
+summary(model) #estimation output
+AIC(model)
+## [1] 171.2994
+BIC(model)
+## [1] 175.6966
+res <-  residuals(model) #generate residuals
+acf(res)
+pacf(res)
+Box.test(residuals(model), lag = 20, type="Ljung")
+```
+
+**The residuals are not showing a pattern:** Looking at the ACF and PACF it looks quite close to noise. So we can use this model for forecast. In the class example we also had to construct an AR(1) model as the residuals had a pattern to them. 
+
+## Having difficulty in making the forecast
+
+```{r}
+fcast=union(US, c(1,2,3,4)) #fcast will include actual US and 4 forecasts for US
+fcastd=union(dUS, c(1,2,3,4)) #fcastd will include actual dUS and 4 forecasts for dUS
+length(US)
+length(dUS)
+start_index_us <-length(fcast)
+start_index_dus <-length(fcastd)
+start_index_us
+start_index_dus
+
+
+#for(i in 1:4){
+#  fcastd[(start_index - 1) + i]=coef(model)[1]*fcastd[(start_index) + i]
+#  fcast[start_index + i]=fcast[(start_index - 1) + i]+fcastd[(start_index - 1) +i] 
+#}
+# P288, fig 10.13
+fcast = ts(fcast, frequency = 12, start = 2006)
+ts.plot(fcast) #plot of the forecast
+lines(US, col=6) #simualtaneous plotting of the actual series in magenta color
+```
+
+
+```{r model 2}
+ur.df(US,type="drift",lags=1) 
+
+model <-dynlm(dUS ~ lag(US,-1)+lag(US,-1)) #regression corresponding to the above ADF test
+summary(model)
+
+AIC(model)
+## [1] 134.9974
+BIC(model)
+## [1] 140.7334
+res<-  residuals(model)
+acf(res)
+pacf(res)
+Box.test(residuals(model), lag = 20, type="Ljung")
+```
+
+
+```{r model3}
+# P287 Prepare to forecast table 10.8 
+model <-dynlm(dUS ~ lag(dUS,-1)+0) #AR(1) w/o constant for differenced series
+summary(model)
+AIC(model)
+## [1] 135.857
+BIC(model)
+## [1] 138.725
+res<-  residuals(model)
+acf(res)
+pacf(res)
+Box.test(residuals(model), lag = 20, type="Ljung")
+```
