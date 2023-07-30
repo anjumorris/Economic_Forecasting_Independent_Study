@@ -1,0 +1,248 @@
+---
+title: "Chapter 7 Summary"
+output: html_notebook
+---
+## Setup
+
+```{r setup the directory}
+# setwd("/Users/anjali/Documents/university/Econ_5305/code_directory/Chapter7")
+rm(list = ls())
+```
+
+```{r imports}
+library(openxlsx)
+library(readxl)
+library(ggplot2)
+library(dynlm)
+library(forecast)
+```
+## Question 2
+
+#### 2.1 Read data on unemployed persons
+```{r Read unemployment data}
+data_1 <- read_excel("ch7_q2.xlsx")
+View(data_1)
+
+# read the time series for unemployment
+T_UNEMPLOYED<-ts(data_1$UNEMPLOYED,frequency=12,start=c(1948,1,1), end =c(2023,3,1))
+```
+
+#### 2.2 Preliminary EDA
+```{r EDA Unemployment Level}
+cat("Unemployment Level (seasonally Adjusted)") 
+summary(T_UNEMPLOYED)
+cat("Standard deviation: ", sd(T_UNEMPLOYED))
+plot.ts(T_UNEMPLOYED, main="Unemployment Level (seasonally Adjusted), Monthly",ylab ="number of persons")
+```
+**Key Findings:** The graph looks like it has an upward trend along with the presence of cycles. There is some reversion and back and forth that is happening.The upward overall trend of unemployed persons is also expected as it reflects the population growth as well. Summary statistics shows the mean unemployed persons is around 6.6 million. We need to see the ACF and PACF to analyse further.
+
+#### 2.3 Autocorrelation for unemployment level
+```{r}
+acf(T_UNEMPLOYED,lag.max= 20, plot = FALSE, main = "ACF for Unemployment Level (seasonally Adjusted)")
+acf(T_UNEMPLOYED,lag.max= 20, plot = TRUE, main = "ACF for Unemployment Level (seasonally Adjusted)")
+pacf(T_UNEMPLOYED,lag.max= 20, plot = TRUE, main = "PACF for Unemployment Level (seasonally Adjusted)")
+```
+
+**Key Findings:** 
+The autocorrelation coefficients for a time series provide information about how observations at different lags are related to each other. The autocorrelation function (ACF) plot visualizes these relationships and reveals important patterns and dynamics of the time series.
+
+With the ACF plot of unemployment data, we can see that there is a positive association between observations at different lags, which means that previous values have a significant influence on future values. However, the degree of association decreases as the lag increases, indicating that the effect of past values gradually fades out over time. 
+
+And looking at the PCAF plot, we can observe that only the coefficient at lag = 1 has a significant spike, while the coefficients for other lags are in the band.
+
+We see that there are infinite spikes with the autocorrelation falling. The first spike is at 0.98 which is less than 1. A necessary and sufficient condition for an AR(1) process to be covariance stationary is that |phi| <  1. This indicates that we may be able to model the process ar a AR(1) process with phi (persistence) = 0.98.
+
+Therefore, I think AR(1) model would be good to explain this data.
+
+#### 2.4 Calculate auto-correlation functions for growth series
+```{r Transformations Unemployment Level  }
+# calculate growth rates by taking the difference of the log (natural log) 
+G_UNEMPLOYED <- 100*diff(log(T_UNEMPLOYED))
+```
+
+```{r Summary and plot of growth of unemployment }
+cat("Change in Unemployment Level (seasonally Adjusted) - Descriptive Statistics:\n") 
+summary(G_UNEMPLOYED)
+cat("Standard deviation: ", sd(G_UNEMPLOYED))
+plot.ts(G_UNEMPLOYED, main="Change in the Unemployment Level, seasonally Adjusted (%), Monthly")
+acf(G_UNEMPLOYED,lag.max= 20, plot = TRUE, main = "ACF for Change in Unemployment Level (seasonally Adjusted)")
+pacf(G_UNEMPLOYED,lag.max= 20, plot = TRUE, main = "PACF for Change in Unemployment Level (seasonally Adjusted)")
+```
+**Key Findings:** Looking at the ACF we see 1 very small spike for Lag 1. This looks quite close to noise. We could also try to Model the growth series as MA(1) process. 
+
+#### Conclusion
+Auto regressive process AR(1) with very high persistence of 0.98 could be a good model to explain the dependence of the series.
+
+```{r trial model for unemployment}
+# AR(1)
+model_1<-arima(x=T_UNEMPLOYED,order=c(1,1,0))
+model_1
+plot(model_1)
+```
+
+## Question 3
+
+#### 3.1 Read data on per capita income for California
+```{r Read per captia california data}
+data_q3 <- read_excel("ch7_q3_q4_final.xls")
+View(data_q3)
+ts_california <- ts(data_q3$CALIFORNIA, start = c(1929, 1, 1), frequency = 1)
+```
+
+#### 3.2 Timeseries plots of per capita income in California, ACF, PACF
+```{r per capita income in California - plot, acf,pacf  }
+summary(ts_california)
+plot(ts_california, main = "Personal Income in California", ylab = "Per Capita Income")
+
+acf(ts_california, lag.max = 20, plot = TRUE, na.action = na.pass)
+pacf(ts_california, lag.max = 20, plot = TRUE, na.action = na.pass)
+```
+**Interpretation: ** The ACF shows infinite spikes that are slowly falling which indicates we could model the time series using an AR(1) process. However, it might be interesting to calculate the per-capita income growth as shown in the textbook fig 7.7 to see if we can identify any other patterns in the ACF. This is a highly persistent series and hence we see the upward trend. The times series does not show any reversion to the mean and does not look stationary. 
+
+#### 3.3 Analysis for per-capita income growth california -plots of per capita income in California, ACF, PACF
+
+```{r Per-capita income growth  }
+# calculate growth rates by taking the difference of the log (natural log) 
+gs_california <- 100*diff(log(ts_california))
+plot(gs_california, main = "Personal Income in California - Growth", ylab = "Per Capita Income Growth")
+
+acf(gs_california, lag.max = 20, plot = TRUE, na.action = na.pass)
+pacf(gs_california, lag.max = 20, plot = TRUE, na.action = na.pass)
+```
+**Interpretation** Looking at the ACF and PACF of the growth series we see 2 spikes in the ACF after which there is inversion. Looking at the PACF again we see 2 spikes followed some more smaller spikes (near the blue line) on the 4th, 9th  positions. The ACF with 2 spikes indicates an AR(2) model.
+
+```{r potential models for california per capita income  }
+# model the growth series using AR(2) process
+model_california_ar2 <-arima(x=gs_california,order=c(2,0,0))
+model_california_ar2
+
+# using auto.arima to see what auto arima suggests - ARIMA(3,0,2) with non-zero mean
+model_california_auto <- auto.arima(gs_california)
+model_california_auto
+```
+**Interpretations:** all the models have similar aic values. The auto model also creates a AR(2) process model which is a good model to use.
+
+#### 3.4 - 3 step forecast
+```{r forecasting california per captia income growth using AR(2) model}
+forecast_california <- forecast(model_california_ar2, h=3) 
+summary(forecast_california) 
+plot(forecast_california)
+```
+
+## Question 4
+
+#### 4.1 Loading data 
+```{r reading other states data}
+# set periods to where all series have data so no N/A occurs
+ts_california<-ts(data_q3$CALIFORNIA, start = c(1929,1,1), frequency = 1)
+ts_texas<-ts(data_q3$TEXAS, start = c(1929, 1, 1), frequency = 1)
+ts_seattle<-ts(data_q3$SEATTLE, start = c(1929, 1, 1), frequency = 1)
+ts_ny <-ts(data_q3$NEWYORK, start = c(1929, 1, 1),frequency = 1) 
+```
+
+#### 4.2 Quick plot to observe the all the timeseries together
+```{r all line plots}
+# Line plot
+plot(ts_texas, type ='l',col = "blue" , xlab= "observation_date", ylab = "Per capita income ")
+lines(ts_seattle, type = 'l', col = "green")
+lines(ts_california, type = 'l', col = "black")
+lines(ts_ny, type = 'l', col = "red")
+legend("topleft", c("Texas","Seattle","California","New York") ,lty = 1, col = c("blue","green","black","red"))
+```
+**Note: ** The time series plots for all the states have similar trends (not stationary characteristics) so we can do further analysis of ACF and PACF after doing the log-difference transform on all the series to get the growth series.
+
+#### 4.3 Analysis for per-capita income growth for all the states - ACFs and PACFs
+
+```{r acfs and pacfs for all the states}
+california <- 100*diff(log(ts_california))
+seattle <- 100*diff(log(ts_seattle))
+newyork <- 100*diff(log(ts_ny))
+texas <- 100*diff(log(ts_texas))
+
+# combine line plot
+plot(texas, type ='l',col = "blue" , xlab= "observation_date", ylab = "Per capita income Growth")
+lines(seattle, type = 'l', col = "green")
+lines(california, type = 'l', col = "black")
+lines(newyork, type = 'l', col = "red")
+legend("topleft", c("Texas","Seattle","California","New york") ,lty = 1, col = c("blue","green","black","red"))
+
+acf(seattle, lag.max = 20, plot = TRUE, na.action = na.pass)
+pacf(seattle, lag.max = 20, plot = TRUE, na.action = na.pass)
+acf(texas, lag.max = 20, plot = TRUE, na.action = na.pass)
+pacf(texas, lag.max = 20, plot = TRUE,na.action = na.pass)
+acf(newyork, lag.max = 20, plot = TRUE, na.action = na.pass)
+pacf(newyork, lag.max = 20, plot = TRUE, na.action = na.pass)
+```
+**Key Findings:** <br>
+<ul>
+<li> Seattle - We see in the ACF that there are are 2 spikes AT L1 AND L2 and it reduces. This indicates that a AR process model can been used . Looking at the PACF we see that there are multiple spikes at Lags = 1,4,5 and 6. Based on this analysis I feel that using AR(6) process model maybe a good option. It would be interesting to see if this pattern is arising due to the specific data sample observed. (train test splitting validation will help) </li>
+<li>Texas - We see in the ACF that there are 2 spikes AT L1 AND L2 and the ACF looks like it has a cyclical pattern. This indicates that a AR process model can been used .Looking at the PACF we see that there are multiple spikes at Lags = 1,2, and 9. Based on this analysis I feel that using AR(9) process model maybe a good option. We could also create an AR(2) model and not consider the 9th spike as it is quite small</li>
+<li>New York - We see in the ACF that there are 2 spikes AT L1 AND L2 and the ACF looks like it has a cyclical pattern. This indicates that a AR process model can been used .Looking at the PACF we see that there are multiple spikes at Lags = 1,2, and 5. Based on this analysis I feel that using AR(5) process model maybe a good. We could also look at and AR(2) since the 5th spike is small as another choice.</li>
+<li>Commonalities are that all the series in the ACF show 2 spikes which then reduce. The PACFs have spikes at different lags and all except Seattle (we have fewer data points here) have prominent spikes at L1 and L2 indicating a general model that could be AR(2)</li>
+</ul>
+
+#### 4.4 AR models for each state
+##### Seattle
+```{r models for Seattle}
+# AR(6) model for seattle 
+model_seattle_ar6 <-arima(x=seattle,order=c(6,0,0))
+model_seattle_ar6
+
+# AR(2) model for seattle 
+model_seattle_ar2 <-arima(x=seattle,order=c(2,0,0))
+model_seattle_ar2
+
+# using auto.arima to see what auto arima suggests - ARIMA(0,1,0) which does not make sense at all
+#model_seattle_auto <- auto.arima(seattle)
+#model_seattle_auto
+```
+
+```{r forecast for Seattle}
+# forecast using AR(6) model
+forecast_seattle <- forecast(model_seattle_ar6, h=3) 
+summary(forecast_seattle) 
+plot(forecast_seattle)
+```
+#### Texas
+```{r models for Texas}
+# AR(9) model for Texas
+model_texas_ar9 <-arima(x=texas,order=c(9,0,0))
+model_texas_ar9
+
+# AR(2) model for Texas
+model_texas_ar2 <-arima(x=texas,order=c(2,0,0))
+model_texas_ar2
+
+# using auto.arima to see what auto arima suggests - ARIMA(3,0,2) with non-zero mean 
+model_texas_auto <- auto.arima(texas)
+model_texas_auto
+```
+```{r forecast for Texas}
+# forecast using AR(9) model
+forecast_texas <- forecast(model_texas_ar9, h=3)
+summary(forecast_seattle) 
+plot(forecast_texas)
+```
+#### Newyork
+
+```{r models for newyork}
+# AR(5) model for NY
+model_ny_ar5 <-arima(x=newyork,order=c(5,0,0))
+model_ny_ar5
+
+# AR(2) model for NY
+model_ny_ar2 <-arima(x=newyork,order=c(2,0,0))
+model_ny_ar2
+
+# using auto.arima to see what auto arima suggests - ARIMA(2,0,3) with non-zero mean 
+model_ny_auto <- auto.arima(newyork)
+model_ny_auto
+```
+
+```{r forecast for New York}
+# forecast using AR(5) model
+forecast_ny <- forecast(model_ny_ar5, h=3)
+summary(forecast_ny)
+plot(forecast_ny)
+```
+
