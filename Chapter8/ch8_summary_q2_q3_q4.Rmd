@@ -1,0 +1,341 @@
+---
+title: "Chapter8 Summary: PART 1 - Questions 2,3 and 4"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+## Setup
+
+```{r setup the directory}
+#setwd("/Users/anjali/Documents/university/Econ_5305/code_directory/Ch8_submission_full/")
+rm(list = ls())
+```
+
+```{r imports}
+library(openxlsx)
+library(readxl)
+library(ggplot2)
+library(dynlm)
+library(forecast)
+library(urca)
+library(lubridate)
+library(TSstudio)
+```
+
+```{r storage }
+# create a vector to store reference to all the models
+model_names <- c()
+model_aic <- c()
+model_bic <- c()
+model_cor <- c()
+model_stationary <- c()
+model_invertible <-c()
+```
+
+```{r function to store stuff}
+store.function <- function(name = "None",this_model,DATA,stationary = TRUE,invertible = TRUE){
+  model_names <<- append(model_names,name)
+  model_aic <<- append(model_aic,AIC(this_model))
+  model_bic <<- append(model_bic,BIC(this_model))
+  this_cor <<- cor(fitted(this_model), DATA, use="pairwise.complete.obs")^2
+  model_cor<<-append(model_cor,this_cor)
+  model_stationary <<- append(model_stationary,stationary)
+  model_invertible <<- append(model_invertible,invertible)  
+}
+```
+
+# Question 2
+```{r Read Data on house prices in San Diego and Seattle}
+excel_sheets("q2_q3_housing.xlsx")
+data_q2 <- read_excel("q2_q3_housing.xlsx", sheet ="SanDiego")
+data_q3 <- read_excel("q2_q3_housing.xlsx", sheet ="Seattle")
+raw_san_diego <- ts(data_q2[ , c( "Index_NSA" )], start = c(1975, 1), frequency = 12)
+raw_seattle <- ts(data_q3[ , c( "Index_NSA" )], start = c(1975, 1), frequency = 12)
+
+# We are aggregating the index so that it is in quarterly form which is comparable to data model sample from the text book. 
+san_diego <- aggregate(raw_san_diego, nfrequency=4, FUN=mean)
+seattle <- aggregate(raw_seattle, nfrequency=4, FUN=mean)
+```
+
+```{r Preliminary EDA}
+cat("House Price Index - San Diego") 
+summary(san_diego)
+cat("Standard deviation: ", sd(san_diego))
+ts.plot(san_diego)
+ur.df(san_diego,type="drift",lags=0)
+```
+
+**Notes:** The series has a unit root and there is a stochastic trend. It appears to be a random walk with drift. We will look at the first difference / difference(log) of the series. In the textbook section 8.3 modeling for the the house price index has been done on the Growth Function (diff(log)). 
+
+```{r Transformations for sandiego }
+d_san_diego <- diff(san_diego)
+dlog_san_diego <- diff(log(san_diego))
+par(mfrow=c(2,1) , mar = c(2, 3, 2, 3))
+ts.plot(d_san_diego)
+ts.plot(dlog_san_diego)
+ur.df(d_san_diego,type="drift",lags=0)
+ur.df(dlog_san_diego,type="drift",lags=0)
+```
+** Notes:** Both the 1st difference and Growth Series do not have a unit root. We will do ACF and PACF analysis on the first difference + Growth series to see if the AR(4) model previously identified is still preferred. In general, we prefer the different of log rather than the difference only because it has good Interpretation, growth rate, and it helps to make the variance stationary.
+
+```{r ACF and PACF for San Diego}
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+acf(d_san_diego, main = "ACF - San Diego (1st Diff)")
+pacf(d_san_diego, main = "PACF - San Diego (1st Diff)")
+acf(dlog_san_diego, main = "ACF - San Diego (Growth)")
+pacf(dlog_san_diego, main = "PACF - San Diego (Growth)")
+```
+**Notes: ** Looking at the PACF we see that there are many more prominent spikes upto 7 as compared to the model in the textbook where there are spikes only till lag = 4. The ACF and PACF here indicate AR(4) and AR(7) models for the growth series. AR(1) is marginally indicated.
+
+```{r AR 4 model assessment}
+sandiego_AR4 <- arima(dlog_san_diego, order=c(4,0,0))
+sandiego_AR4
+
+cat("\nModel R^2 =  ")
+cat(cor(fitted(sandiego_AR4),dlog_san_diego , use="pairwise.complete.obs")^2)
+cat("\nBox Test on the Residuals:  ")
+Box.test(sandiego_AR4$residuals, type="Ljung-Box")
+
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+plot(sandiego_AR4)
+res_AR4 <- residuals(sandiego_AR4)
+acf(res_AR4)
+pacf(res_AR4)
+```
+
+```{r AR 7 model assessment}
+sandiego_AR7 <- arima(dlog_san_diego, order=c(7,0,0))
+sandiego_AR7
+cat("\nModel R^2 =  ")
+cat(cor(fitted(sandiego_AR7),dlog_san_diego , use="pairwise.complete.obs")^2)
+cat("\nBox Test on the Residuals:  ")
+Box.test(sandiego_AR7$residuals, type="Ljung-Box")
+
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+plot(sandiego_AR7)
+res_AR7 <- residuals(sandiego_AR7)
+acf(res_AR7)
+pacf(res_AR7)
+```
+**Conclusion** The AR4 model is good but there is one spike in the ACF in the 6th lag indicating that this is not completely noise. A better model would be AR(7) model where we see no spikes in the ACF and PACF. The AR(7) model also has all invertible roots. Nevertheless we can use AR(4) model however it might not be the most preferred after updating the data. 
+In terms of model performance - The R^2 of the model the textbook is 0.41. The AR(4) has a lower R^2  = 0.39 while the AR(7) model has R^2 = 0.43.  
+
+# Question 3
+
+```{r EDA on Seattle Data}
+cat("House Price Index - Seattle") 
+summary(seattle)
+cat("Standard deviation: ", sd(seattle))
+ts.plot(seattle)
+ur.df(seattle,type="drift",lags=0)
+```
+
+**Notes:** Similar to san diego  the series has a unit root and there is a stochastic trend. It appears to be a random walk with drift. We will look at the first difference / difference(log) of the series. In the textbook section 8.3 modeling for the the house price index has been done on the Growth Function (diff(log)). 
+
+```{r Transformations for seattle }
+d_seattle <- diff(seattle)
+dlog_seattle <- diff(log(seattle))
+par(mfrow=c(2,1) , mar = c(2, 3, 2, 3))
+ts.plot(d_seattle)
+ts.plot(dlog_seattle)
+ur.df(d_seattle,type="drift",lags=0)
+ur.df(dlog_seattle,type="drift",lags=0)
+```
+```{r ACF and PACF for Seattle}
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+acf(d_seattle, main = "ACF - Seattle (1st Diff)")
+pacf(d_seattle, main = "PACF - Seattle (1st Diff)")
+acf(dlog_seattle, main = "ACF - Seattle (Growth)")
+pacf(dlog_seattle, main = "PACF - Seattle (Growth)")
+```
+**Notes: ** The PACF has spikes at lag 1,2,3 this indicates AR(3) model and AR(1) model can be considered as the lag1 spike is much higher. Looking at the ACF there is spike at lag 1 and lag 4 the trend here is decreasing but not as smooth so we may want to also look at ARMA(1,1) ARMA(3,1) also before checking out ARMA(1,4) and ARMA (3,4). 
+
+```{r Train Test Split for question 3 }
+# Split the data into training and testing sets
+split_seattle <- ts_split(ts.obj = dlog_seattle, sample.out = 6)
+train_seattle <- split_seattle$train
+test_seattle <- split_seattle$test
+```
+
+```{r models for seattle}
+# auto-arima (ARIMA(1,0,1)(1,0,1)[4])
+seattle_auto<-auto.arima(train_seattle,seasonal = TRUE)
+seattle_auto
+plot(seattle_auto)
+store.function("Seattle Auto Arima",seattle_auto,train_seattle,FALSE,TRUE)
+```
+```{r AR models for seattle}
+seattle_ar1 <- arima(train_seattle, order=c(1, 0, 0))
+seattle_ar1
+seattle_ar3 <- arima(train_seattle, order=c(3, 0, 0))
+seattle_ar3
+par(mfrow=c(1,2) , mar = c(3, 2, 3, 2))
+# plot(seattle_ar1, main ="AR1: Inverse Roots")
+# plot(seattle_ar3, main ="AR3: Inverse Roots")
+
+store.function("Seattle AR1",seattle_ar1,train_seattle,TRUE,TRUE)
+store.function("Seattle AR3",seattle_ar3,train_seattle,TRUE,TRUE)
+```
+```{r ARMA models for seattle}
+#ARMA(1,1) ARMA(3,1) also before checking out ARMA(1,4) and ARMA (3,4). 
+seattle_ar1ma1 <- arima(train_seattle, order=c(1, 0, 1))
+seattle_ar1ma1
+seattle_ar3ma1 <- arima(train_seattle, order=c(3, 0, 1))
+seattle_ar3ma1
+seattle_ar1ma4 <- arima(train_seattle, order=c(1, 0, 4))
+seattle_ar1ma4
+seattle_ar3ma4_d1 <- arima(train_seattle, order=c(3, 1, 4))
+seattle_ar3ma4_d1
+
+# plot(seattle_ar1ma1, main ="ARMA(1,0,1): Inverse Roots")
+# plot(seattle_ar3ma1, main ="ARMA(3,0,1): Inverse Roots")
+# plot(seattle_ar1ma4, main ="ARMA(1,0,4): Inverse Roots")
+# plot(seattle_ar3ma4_d1, main ="ARMA(3,1,4): Inverse Roots")
+
+store.function("Seattle ARMA(1,0,1)",seattle_ar1ma1,train_seattle,TRUE,TRUE)
+store.function("Seattle ARMA(3,0,1)",seattle_ar3ma1,train_seattle,TRUE,TRUE)
+store.function("Seattle ARMA(1,0,4)",seattle_ar1ma4,train_seattle,TRUE,TRUE)
+store.function("Seattle ARMA(3,1,4)",seattle_ar3ma4_d1,train_seattle,FALSE,FALSE)
+```
+
+
+```{r}
+# combine everything into 1 large data frame
+all_models <- data.frame(model_names, model_aic, model_bic, model_cor, model_stationary, model_invertible)
+all_models
+```
+#### Looking at the table we see that ARMA(3,1,4) performs better than auto.arima() model on R^2. Both models have roots that are not invertible. The best model with all invertible roots is the ARMA(3,0,1). The AR(3) model is also quite good in explainbability and has a much lower complexity and could also be considered.(Notes from professor) 
+
+```{r multi-step forecast for Seattle}
+ # 4 quarter forecast using ARMA(3,0,1)
+forecast <- forecast(seattle_ar3ma1, h = 6)
+forecast
+plot(forecast, main = "Seattle Housing Price Index (Growth) - Forecast (ARMA (3,,0,1))")
+lines(fitted(seattle_ar3ma1),col="red")
+par(new=TRUE)
+plot(dlog_seattle) #plot the original series
+legend("bottomright", legend=c("Actual", "Fitted","Forecast"), lty=c(2,2,1), col=c( "black","red", "blue"))
+
+
+# 4 quarter forecast using auto.arima model
+forecast2 <- forecast(seattle_auto, h = 6)
+forecast2
+plot(forecast2, main = "Seattle Housing Price Index (Growth) - Forecast (Auto Arima)")
+lines(fitted(seattle_auto),col="red")
+par(new=TRUE)
+plot(dlog_seattle) #plot the original series
+legend("bottomright", legend=c("Actual", "Fitted","Forecast"), lty=c(2,2,1), col=c( "black","red", "blue"))
+```
+
+# Question 4
+### 4.1 Read the Data
+
+```{r read data }
+mortgage_data <- read_excel("ch10_q5_data-1.xls")
+unemployment_data <- read_excel("UNRATE.xls")
+housing_data <-read_excel("q2_q3_housing.xlsx")
+
+# read the mortgage time series
+MORTGAGE<-ts(mortgage_data$MORTGAGE, frequency =4, start = c(1951,10))
+MORTGAGE <- window(MORTGAGE, start=c(1975, 1), end=c(2019,1))
+
+# read the unemployment rate
+raw_UNRATE<-ts(unemployment_data$UNRATE, frequency = 12, start = c(1948,1))
+raw_UNRATE <- window(raw_UNRATE, start=c(1975, 1), end=c(2019, 3))
+UNRATE <- aggregate(raw_UNRATE, nfrequency=4, FUN=mean)
+
+# read the housing price index
+raw_HOUSING<-ts(housing_data$Index_NSA, frequency = 12, start = c(1975,1))
+raw_HOUSING <- window(raw_HOUSING, start=c(1975, 1), end=c(2019, 3))
+HOUSEPRICE <- aggregate(raw_HOUSING, nfrequency=4, FUN=mean)
+
+# check that we have same number of data points for all the series
+length(MORTGAGE)
+length(UNRATE)
+length(HOUSEPRICE)
+```
+
+### 4.2 PLot the time Series and check Stationarity
+```{r line plots}
+# Line plot
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+plot(HOUSEPRICE, main = "House Price - Index")
+plot(MORTGAGE, main = "Mortgage Rate")
+plot(UNRATE,main = "Unemployment Rate")
+ur.df(HOUSEPRICE,type="drift",lags=0)
+ur.df(MORTGAGE,type="drift",lags=0)
+ur.df(UNRATE,type="drift",lags=0)
+```
+**Notes:** Mortgage and housing price index need to be transformed. For for Housing price 1st Difference removes the unit root. However for Mortgage rate 1st difference Test statistic is still = -2.4 (which is close). I preferred to go with the diff(log()) transformation for stationarizing the time series. 
+
+```{r Transformations for stationarity}
+dLogMORTGAGE <- diff(log(MORTGAGE)) # used diff log since diff was still showing stochastic trends. 
+dHOUSEPRICE <- diff(HOUSEPRICE)
+dUNRATE <- diff(UNRATE) # take diff of unrate also so that we have the same number of data points when constructing model
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+plot(dHOUSEPRICE, main = "House Price - Index (First Diffrence)")
+plot(dLogMORTGAGE, main = "Mortgage Rate - DiffLog (Growth Series)")
+plot(dUNRATE,main = "Unemployment Rate - (First Difference)")
+ur.df(dHOUSEPRICE,type="drift",lags=0)
+ur.df(dLogMORTGAGE,type="drift",lags=0)
+ur.df(dUNRATE,type="drift",lags=0)
+```
+
+
+#### Model 1
+```{r model 1}
+model_1 <- arima(dHOUSEPRICE, order=c(4, 0, 0), xreg=dLogMORTGAGE)
+model_1
+cat("\nModel R^2 =  ")
+cat(cor(fitted(model_1), dHOUSEPRICE, use="pairwise.complete.obs")^2)
+plot(model_1)
+```
+
+```{r Model1 residual analysis}
+cat("\nBox Test on the Residuals:  ")
+Box.test(model_1$residuals, type="Ljung-Box")
+par(mfrow=c(1,2) , mar = c(3, 2, 3, 2))
+acf(model_1$residuals, na.action=na.pass)
+pacf(model_1$residuals, na.action=na.pass)
+```
+
+#### Model 2
+```{r model 2}
+# we take diff of unrate so that the data length matches
+model_2 <- arima(dHOUSEPRICE, order=c(4, 0, 0), xreg=dUNRATE)
+model_2
+cat("\nModel R^2 =  ")
+cat(cor(fitted(model_2), dHOUSEPRICE, use="pairwise.complete.obs")^2)
+plot(model_2)
+```
+```{r Model2 residual analysis}
+cat("\nBox Test on the Residuals:  ")
+Box.test(model_2$residuals, type="Ljung-Box")
+par(mfrow=c(1,2) , mar = c(3, 2, 3, 2))
+acf(model_2$residuals, na.action=na.pass)
+pacf(model_2$residuals, na.action=na.pass)
+```
+
+#### Model 3
+```{r model 3}
+model_3 <- arima(dHOUSEPRICE, order=c(4, 0, 0), xreg=cbind(dLogMORTGAGE, dUNRATE))
+model_3
+cat("\nModel R^2 =  ")
+cat(cor(fitted(model_3), dHOUSEPRICE, use="pairwise.complete.obs")^2)
+plot(model_3)
+```
+
+```{r Model3 residual analysis}
+cat("\nBox Test on the Residuals:  ")
+Box.test(model_3$residuals, type="Ljung-Box")
+par(mfrow=c(1,2) , mar = c(3, 2, 3, 2))
+acf(model_3$residuals, na.action=na.pass)
+pacf(model_3$residuals, na.action=na.pass)
+```
+
+**Interpretations of the models: ** All three models have better explaining power as compared to the AR(4) model shown in the textbook. The three models here have R^2 of 0.65 ,0.64, 0.65 which much higher than 0.41 which is the r^2 from the sample in the textbook. However using both mortgage rate and unemployment rate might not be needed. The first model which uses mortgage rate only has the lowest AIC value so using only mortgage rate provides much higher explanatory power.
+
+**Notes from Professor** Although the three models are better than AR(4)  but their feasibility is less than AR(4) because you need to know the current value of interest rate and unemployment rate. 

@@ -1,0 +1,165 @@
+---
+title: "Chapter8 Summary: PART 3 - Questions 5,10"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Setup
+
+```{r setup the directory}
+setwd("/Users/anjali/Documents/university/Econ_5305/code_directory/Ch8_submission_full/")
+rm(list = ls())
+```
+
+```{r imports}
+library(openxlsx)
+library(readxl)
+library(ggplot2)
+library(dynlm)
+library(forecast)
+library(urca)
+library(lubridate)
+library(TSstudio)
+```
+
+```{r storage }
+# create a vector to store reference to all the models
+model_names <- c()
+model_aic <- c()
+model_bic <- c()
+model_cor <- c()
+model_stationary <- c()
+model_invertible <-c()
+```
+
+```{r function to store stuff}
+store.function <- function(name = "None",this_model,DATA,stationary = TRUE,invertible = TRUE){
+  model_names <<- append(model_names,name)
+  model_aic <<- append(model_aic,AIC(this_model))
+  model_bic <<- append(model_bic,BIC(this_model))
+  this_cor <<- cor(fitted(this_model), DATA, use="pairwise.complete.obs")^2
+  model_cor<<-append(model_cor,this_cor)
+  model_stationary <<- append(model_stationary,stationary)
+  model_invertible <<- append(model_invertible,invertible)  
+}
+```
+
+# Question 10
+### 10.1 Read Data
+```{r read data on car sales}
+data_car <- read_excel("q10_carsales.xlsx")
+#View(data_car)
+SALES<-ts(data_car$CAR_SALES, frequency = 12, start = c(1976,1,1), end = c(2023,3,1)) 
+```
+
+### 10.2 EDA and unit root test
+```{r EDA on Car Sales}
+cat("Car Sales - Monthly") 
+summary(SALES)
+cat("Standard deviation: ", sd(SALES))
+ts.plot(SALES, main = "Time Series of Car Sales, Monthly (seasonally adjusted)", ylab="millions of unit")
+ur.df(SALES,type="drift",lags=0)
+```
+**Unit Root Test: ** There is no unit root as the DF test statistic is very low. -5.5.
+
+```{r ACF and PACF anlaysis for car sales}
+dSALES <- diff(SALES)
+dlogSALES <-diff(log(SALES))
+par(mfrow=c(1,2) , mar = c(3, 2, 3, 2))
+acf(SALES,lag=40,main = "ACF: Car Sales")
+pacf(SALES,lag=40, main = "PACF: Car Sales")
+# acf(dSALES,lag=40)
+# pacf(dSALES,lag=40)
+# acf(dlogSALES,lag=40)
+# pacf(dlogSALES,lag=40)
+```
+**Interpretations: ** The ACF is smoothly decreasing while the PACF has spikes at lag = 1,2,3. AR(1) and AR(3) model is indicated.Also try the model ARMA(1,4) and ARMA(3,4) as done in the discussion.
+
+### Search Models
+
+```{r Train Test Split }
+# Split the data into training and testing sets.
+# Keep out last 3 months
+split_sales <- ts_split(ts.obj = SALES, sample.out = 3)
+train_sales <- split_sales$train
+test_sales <- split_sales$test
+```
+
+```{r Car auto arima model}
+auto_arima <- auto.arima(train_sales, seasonal = TRUE)
+auto_arima
+plot(auto_arima)
+store.function("Auto arima ARIMA(0,1,2)(0,0,2)[12] ",auto_arima,train_sales,TRUE,TRUE)
+```
+
+
+```{r Car AR models}
+car_ar1 <- arima(train_sales, order=c(1, 0, 0))
+car_ar1
+car_ar1_d1 <- arima(train_sales, order=c(1, 1, 0))
+car_ar1_d1
+car_ar3 <- arima(train_sales, order=c(3, 0, 0))
+car_ar3
+car_ar3_d1 <- arima(train_sales, order=c(3, 1, 0))
+car_ar3_d1
+
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+plot(car_ar1, main ="AR1: Inverse Roots")
+plot(car_ar1_d1, main ="AR1 (Diff 1): Inverse Roots")
+plot(car_ar3, main ="AR3: Inverse Roots")
+plot(car_ar3_d1, main ="AR3 (Diff 1): Inverse Roots")
+
+store.function("Car Sales AR1",car_ar1,train_sales,TRUE,TRUE)
+store.function("Car Sales AR1 Diff 1",car_ar1_d1,train_sales,TRUE,TRUE)
+store.function("Car Sales AR3",car_ar3,train_sales,FALSE,TRUE)
+store.function("Car Sales AR3 Diff 3",car_ar3_d1,train_sales,TRUE,TRUE)
+```
+```{r Car ARMA models}
+car_ar1_ma4 <- arima(train_sales, order=c(1, 0, 4))
+car_ar1_ma4
+car_ar1_ma4_d1 <- arima(train_sales, order=c(1, 1, 4))
+car_ar1_ma4_d1
+
+car_ar3_ma4 <- arima(train_sales, order=c(3, 0, 4))
+car_ar3_ma4
+car_ar3_ma4_d1 <- arima(train_sales, order=c(3, 1, 4))
+car_ar3_ma4_d1
+
+plot(car_ar1_ma4, main ="ARMA(1,4): Inverse Roots")
+plot(car_ar1_ma4_d1, main ="ARMA(1,4) Diff 1: Inverse Roots")
+plot(car_ar3_ma4, main ="ARMA(3,4): Inverse Roots")
+plot(car_ar3_ma4_d1, main ="ARMA(3,4) Diff 1: Inverse Roots")
+
+store.function("Car Sales ARMA(1,4)",car_ar1_ma4,train_sales,FALSE,TRUE)
+store.function("Car Sales ARMA(1,4) Diff 1",car_ar1_ma4_d1,train_sales,TRUE,TRUE)
+store.function("Car Sales ARMA(3,4)",car_ar3_ma4,train_sales,FALSE,FALSE)
+store.function("Car Sales ARMA(3,4) Diff 1",car_ar3_ma4_d1,train_sales,TRUE,TRUE)
+```
+
+```{r check all models}
+all_models <- data.frame(model_names, model_aic, model_bic, model_cor, model_stationary, model_invertible)
+sorted_models <- all_models[order(all_models$model_aic,decreasing = FALSE), ]
+sorted_models
+```
+
+**Model Selected: ** 1.Auto arima ARIMA(0,1,2)(0,0,2)[12] 2. Car Sales ARMA(1,4) Diff 1 -> ARIMA(1,1,4)
+```{r Car Sales Forecast}
+# Auto arima ARIMA(0,1,2)(0,0,2)[12]
+forecast1 <- forecast(auto_arima, h = 3)
+forecast1
+plot(forecast1, main = "Car Sales Units - Forecast (ARIMA(0,1,2)(0,0,2)[12])", include = 50)
+lines(fitted(auto_arima),col="red")
+lines(SALES) #plot the original series
+legend("bottomright", legend=c("Actual", "Fitted","Forecast"), lty=c(1,1,1), col=c( "black","red", "blue"))
+
+#3 month forecast using ARMA(1,1,4)
+forecast2 <- forecast(car_ar1_ma4_d1, h = 3)
+forecast2
+plot(forecast2, main = "Car Sales Units - Forecast (ARMA (1,1,4))", include = 50)
+lines(fitted(car_ar1_ma4_d1),col="red")
+lines(SALES) #plot the original series
+legend("bottomright", legend=c("Actual", "Fitted","Forecast"), lty=c(1,1,1), col=c( "black","red", "blue"))
+```
+
+The auto arima picks up the seasonality very well and creates a very good model that can be used for forecasting. 

@@ -1,0 +1,187 @@
+---
+title: "Chapter8 Summary: PART 1 - Questions 7 and 8"
+output:
+  html_document:
+    df_print: paged
+---
+## Setup
+
+```{r setup the directory}
+#setwd("/Users/anjali/Documents/university/Econ_5305/code_directory/Ch8_submission_full/")
+rm(list = ls())
+```
+
+```{r imports}
+library(openxlsx)
+library(readxl)
+library(ggplot2)
+library(dynlm)
+library(forecast)
+library(urca)
+library(lubridate)
+library(TSstudio)
+```
+```{r storage }
+# create a vector to store reference to all the models
+model_names <- c()
+model_aic <- c()
+model_bic <- c()
+model_cor <- c()
+model_stationary <- c()
+model_invertible <-c()
+```
+
+```{r function to store stuff}
+store.function <- function(name = "None",this_model,DATA,stationary = TRUE,invertible = TRUE){
+  model_names <<- append(model_names,name)
+  model_aic <<- append(model_aic,AIC(this_model))
+  model_bic <<- append(model_bic,BIC(this_model))
+  this_cor <<- cor(fitted(this_model), DATA, use="pairwise.complete.obs")^2
+  model_cor<<-append(model_cor,this_cor)
+  model_stationary <<- append(model_stationary,stationary)
+  model_invertible <<- append(model_invertible,invertible)  
+}
+```
+
+
+# Question 7
+
+```{r Read Data}
+# Import data set
+FTSE_data <- read_excel("q7_stock_index.xlsx", sheet = 1)
+SP500_data <- read_excel("q7_stock_index.xlsx", sheet = 2)
+```
+
+
+I joined the two data sets by date because the stock markets in the US and UK don't always work on the same days as holidays are different.
+
+```{r join them so the dates match up}
+joined_df <- merge(FTSE_data, SP500_data, by.x = "Date", 
+             by.y = "Date", all.x = FALSE, all.y = FALSE)
+tail(joined_df)
+```
+
+```{r}
+FTSE<-ts(joined_df$Open.x, start=c(2000,1,4),frequency = 360, end =c (2023,5,1))
+SP500<-ts(joined_df$Open.y, start=c(2000,1,4),frequency = 360, end =c (2023,5,1))
+plot(FTSE)
+plot(SP500)
+```
+
+```{r}
+# Daily returns
+FTSE_return <- diff(log(FTSE))
+SP500_return <- diff(log(SP500))
+plot.ts(FTSE_return, axes=FALSE, ylab="", col="blue") 
+lines(SP500_return, col="red")
+legend("topleft", legend=c("FTSE", "SP500"), lty=c(2,2,1), col=c( "red", "blue"))
+```
+
+
+```{r Simple Linear Regression}
+#Simple Linear Regression
+model_1 <- lm(SP500_return ~ FTSE_return)
+summary(model_1)
+```
+
+Both the model is significant based on the F-statistic. The t-statistic for FTSE is also very significant. The model has adjusted r^2 of around 0.24 which is not very high ideally we want this value to be closer to 1 atleast > 0.75 to consider this to be a very strong correlation. 
+
+```{r Correlation Matrix}
+#Correlation Matrix
+df <- data.frame(SP500_return, FTSE_return)
+df <- na.omit(df)
+cor_matrix <- cor(df)
+print(cor_matrix)
+```
+There is a correlation of 0.46 but again this not very high > 0.75.
+**Note** For this question we can use different logic to try and answer the question. For instance, the benchmark regression could use just use one SP500, in some order of AR or ARMA process. One can also consider to add the current ( you do know at the time of current day of trading in New York ) and a few lags of FTSE.
+
+
+
+#### Conclusion
+Based on the simple linear regression and the correlation matrix, there is a positive linear relationship between the two variables but it's not too strong. FTSE returns can predict the SP500 returns to a certain degree.
+
+# Question 8
+```{r read data on exchange rate}
+FOREX <- ts( data =  read_excel("q8_exchangerate.xlsx")[ , c( "EXCHANGE_RATE" )]  ,
+               start = c(1999, 1, 1 ) ,
+               end = c( 2023 , 4, 1 ) ,
+               frequency = 12
+                 ) 
+```
+
+```{r Preliminary EDA}
+cat("US - Euro Exchange Rate") 
+summary(FOREX)
+cat("Standard deviation: ", sd(FOREX))
+ts.plot(FOREX)
+ur.df(FOREX,type="drift",lags=1)
+```
+**Unit Root is present: ** There is some stochastic trend in the series so we need to consider looking at the 1st difference.
+
+```{r Transformations for Forex}
+dFOREX <- diff(FOREX)
+ur.df(dFOREX,type="drift",lags=0)
+ts.plot(dFOREX , main ="FOREX - 1st Difference")
+```
+
+```{r ACF and PACF analysis for FOREX}
+par(mfrow=c(1,2) , mar = c(3, 2, 3, 2))
+acf(dFOREX, main = "ACF - Exchange Rate(1st Diff)")
+pacf(dFOREX, main = "PACF - Exchange Rate(1st Diff)")
+```
+Looking at the ACF a(nd PACF we see that there is 1 spike in the ACF and sharp fall in correlation which can indicate MA(1) model. Looking at PACF we could consider a AR(1) model. ARMA(1,1) and AR(1,2) (Aya's model)
+
+```{r Train Test Split for question 3 }
+# Split the data into training and testing sets
+split_forex <- ts_split(ts.obj = dFOREX, sample.out = 12)
+train_forex <- split_forex$train
+test_forex <- split_forex$test
+```
+
+
+```{r models}
+auto_arima <- auto.arima(train_forex, seasonal = TRUE)
+auto_arima
+cat("\n -----\n")
+ma1 <- arima(train_forex, order=c(0, 0, 1))
+ma1
+ar1 <- arima(train_forex, order=c(1, 0, 0))
+ar1
+ar1ma1 <- arima(train_forex, order=c(1, 0, 1))
+ar1ma1
+ar1ma2 <- arima(train_forex, order=c(1, 0, 2))
+ar1ma2
+
+# plot(auto_arima, main ="Auto Arima: Inverse Roots")
+# plot(ma1, main ="ARMA(0,0,1): Inverse Roots")
+# plot(ar1, main ="ARMA(1,0,0): Inverse Roots")
+# plot(ar1ma1, main ="ARMA(1,0,1): Inverse Roots")
+# plot(ar1ma2, main ="ARMA(1,0,2): Inverse Roots")
+
+store.function("Auto Arima",auto_arima,train_forex,TRUE,TRUE)
+store.function("ARMA(0,0,1)",ma1,train_forex,TRUE,TRUE)
+store.function("ARMA(1,0,0)",ar1,train_forex,TRUE,TRUE)
+store.function("ARMA(1,0,1)",ar1ma1,train_forex,TRUE,TRUE)
+store.function("ARMA(1,0,2)",ar1ma2,train_forex,TRUE,TRUE)
+```
+```{r search models}
+# combine everything into 1 large data frame
+all_models <- data.frame(model_names, model_aic, model_bic, model_cor, model_stationary, model_invertible)
+all_models
+```
+#### Conclusion 
+All the models have extremely low R^2. The Auto Arima model selects MA(1) model for modelling the process. The ACF and PACF are very close to noise. Constructing a 12 month forecast for this data is not possible. Only a short term model is possible. Most stock market data tends to be very close to  white noise and we see the same pattern for the exchange rate as well.From the plot below we can see that only 1 prediction is possible for 1 month after this it reverts to unconditional mean and variance.
+
+```{r forecasting the exchange rate}
+# Forecast using MA(1) model 
+forecast <- forecast(ma1, h = 12)
+forecast
+plot(forecast, main = "Exchange Rate - Forecast (ARMA (0,0,1))")
+lines(fitted(ma1),col="red")
+par(new=TRUE)
+plot(dFOREX) #plot the original series
+legend("bottomright", legend=c("Actual", "Fitted","Forecast"), lty=c(2,2,1), col=c( "black","red", "blue"))
+```
+
+

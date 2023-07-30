@@ -1,0 +1,134 @@
+---
+title: "Chapter8 Summary: PART 3 - Questions 5,10"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Setup
+
+```{r setup the directory}
+#setwd("/Users/anjali/Documents/university/Econ_5305/code_directory/Ch8_submission_full/")
+rm(list = ls())
+```
+
+```{r imports}
+library(openxlsx)
+library(readxl)
+library(ggplot2)
+library(dynlm)
+library(forecast)
+library(urca)
+library(lubridate)
+library(TSstudio)
+```
+
+```{r storage }
+# create a vector to store reference to all the models
+model_names <- c()
+model_aic <- c()
+model_bic <- c()
+model_cor <- c()
+model_stationary <- c()
+model_invertible <-c()
+```
+
+```{r function to store stuff}
+store.function <- function(name = "None",this_model,DATA,stationary = TRUE,invertible = TRUE){
+  model_names <<- append(model_names,name)
+  model_aic <<- append(model_aic,AIC(this_model))
+  model_bic <<- append(model_bic,BIC(this_model))
+  this_cor <<- cor(fitted(this_model), DATA, use="pairwise.complete.obs")^2
+  model_cor<<-append(model_cor,this_cor)
+  model_stationary <<- append(model_stationary,stationary)
+  model_invertible <<- append(model_invertible,invertible)  
+}
+```
+
+# Question 5
+### 5.1 Read Data
+```{r read data on GDP}
+gdp_data <- read_excel("q5_gdp.xlsx")
+#View(gdp_data)
+GDP<-ts(gdp_data$GDP, frequency = 4, start = c(1947,4,1), end = c(2023,1,1)) 
+```
+
+### 5.2 EDA and unit root test
+```{r EDA on GDP}
+cat("GDP - Quarterly") 
+summary(GDP)
+cat("Standard deviation: ", sd(GDP))
+ts.plot(GDP, main = "GDP - Quarterly", ylab="percentage")
+ur.df(GDP,type="drift",lags=0)
+```
+**Unit Root Test: ** There is no unit root as the DF test statistic is very low. -13. It doesn't look like the series any trend.
+
+```{r ACF and PACF anlaysis for car sales}
+par(mfrow=c(1,2) , mar = c(3, 2, 3, 2))
+acf(GDP,lag=40,main = "ACF: GDP")
+pacf(GDP,lag=40, main = "PACF: GDP")
+```
+**Interpretations: ** The ACF and PACF both go up and down. This is indicative of seasonality. The PACF has spikes at lag 1 and 2. The ACF has spikes at lag = 1,2 ... 9,10,11 ... 16,17,18,19. This is indicative of ARMA models and seasonal ARMA models. We can try ARMA(1,1), ARMA(2,2), ARMA(2,4), ARMA(4,2) and auto.arima()
+
+### Search Models
+
+```{r Train Test Split }
+# Split the data into training and testing sets.
+# Keep out last 3 months
+split_gdp <- ts_split(ts.obj = GDP, sample.out = 4)
+train_gdp <- split_gdp$train
+test_gdp <- split_gdp$test
+```
+
+```{r Car ARMA models}
+ar1_ma1 <- arima(train_gdp, order=c(1, 0, 1))
+ar1_ma1
+ar2_ma2 <- arima(train_gdp, order=c(2, 0, 2))
+ar2_ma2
+ar2_ma4 <- arima(train_gdp, order=c(2, 0, 4))
+ar2_ma4
+ar4_ma2_d1 <- arima(train_gdp, order=c(4, 1, 2))
+ar4_ma2_d1
+auto_arima <- auto.arima(train_gdp, seasonal = TRUE)
+auto_arima
+
+plot(ar1_ma1, main ="ARMA (1,1): Inverse Roots")
+plot(ar2_ma2, main ="ARMA(2,2): Inverse Roots")
+plot(ar2_ma4, main ="ARMA(2,4): Inverse Roots")
+plot(ar4_ma2_d1, main ="ARMA(4,2): Inverse Roots")
+plot(auto_arima, main ="auto_arima (1,1,3)(2,0,0)[4]")
+
+store.function("GDP ARMA(1,1)",ar1_ma1,train_gdp,TRUE,TRUE)
+store.function("GDP ARMA(2,2) 1",ar2_ma2,train_gdp,TRUE,TRUE)
+store.function("GDP ARMA(2,4)",ar2_ma4,train_gdp,TRUE,TRUE)
+store.function("GDP ARMA(4,2) Diff 1",ar4_ma2_d1,train_gdp,TRUE,TRUE)
+store.function("GDP Auto (1,1,3)(2,0,0)[4]",auto_arima,train_gdp,TRUE,TRUE)
+```
+
+```{r check all models}
+all_models <- data.frame(model_names, model_aic, model_bic, model_cor, model_stationary, model_invertible)
+sorted_models <- all_models[order(all_models$model_aic,decreasing = FALSE), ]
+sorted_models
+```
+
+**Model Selected: ** GDP ARMA(4,2) Diff 1 and GDP Auto (1,1,3)(2,0,0)[4]
+
+```{r GDP Forecast}
+ # 3 month forecast using ARMA(4,1,2)
+forecast1 <- forecast(ar4_ma2_d1, h = 4)
+forecast1
+plot(forecast1, main = "GDP - Forecast (ARMA (4,1,2))", include = 50)
+lines(fitted(ar4_ma2_d1),col="red")
+lines(GDP ) #plot the original series
+legend("bottomright", legend=c("Actual", "Fitted","Forecast"), lty=c(2,2,1), col=c( "black","red", "blue"))
+
+# 3 month forecast using Auto Arima (1,1,3)(2,0,0)[4]
+forecast2 <- forecast(ar4_ma2_d1, h = 4)
+forecast2
+plot(forecast2, main = "GDP - Forecast (Auto (1,1,3)(2,0,0)[4])", include = 50)
+lines(fitted(auto_arima),col="red")
+lines(GDP) #plot the original series
+legend("bottomright", legend=c("Actual", "Fitted","Forecast"), lty=c(2,2,1), col=c( "black","red", "blue"))
+
+```
+
