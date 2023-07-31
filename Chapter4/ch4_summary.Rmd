@@ -1,0 +1,300 @@
+---
+title: "R Notebook"
+output:
+  html_notebook: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+## Setup
+
+```{r setup the directory}
+setwd("/Users/anjali/Documents/university/Econ_5305/code_directory/ch4_summary_submission/")
+rm(list = ls())
+```
+
+```{r imports}
+library(openxlsx)
+library(readxl)
+library(ggplot2)
+library(dynlm)
+library(forecast)
+library(urca)
+library(lubridate)
+library(TSstudio)
+```
+
+```{r read data from excel file}
+excel_sheets("ch4_data.xlsx")
+data_monthly <- read_excel("ch4_data.xlsx", sheet ="monthly")
+data_quarterly <- read_excel("ch4_data.xlsx", sheet ="quarterly")
+```
+
+
+# QUESTION 1
+
+### 1.1 Read Time Series for Montly Data
+```{r read data on house price and interest rate}
+View(data_monthly)
+PRICE <- ts(data_monthly$HOUSE_INDEX, frequency = 12, start = c(1987,1,1))
+INTEREST <- ts(data_monthly$INTEREST_RATE, frequency = 12, start = c(1987,1,1))
+```
+
+### 1.2 Basic EDA
+```{r eda on monthly data}
+cat("House Price - Montly") 
+summary(PRICE)
+cat("Standard deviation: ", sd(PRICE))
+ts.plot(PRICE, main = "House Price Index - Montly", ylab="percentage")
+ur.df(PRICE,type="drift",lags=0)
+
+cat("Interest Rate - Montly") 
+summary(INTEREST)
+cat("Standard deviation: ", sd(INTEREST))
+ts.plot(INTEREST, main = "Interest Rate - Montly", ylab="percentage")
+ur.df(INTEREST,type="drift",lags=0)
+```
+** Both time series have a unit.**  We will transform the timeseries and use the Growth series for house price index and use the first difference for interest rate.
+
+```{r eda of diff}
+dlogPRICE <- diff(log(PRICE))
+dINTEREST <- diff(INTEREST)
+cat("House Price - Annual") 
+summary(dlogPRICE)
+cat("Standard deviation: ", sd(dlogPRICE))
+ts.plot(dlogPRICE, main = "House Price - Annual", ylab="percentage")
+ur.df(dlogPRICE,type="drift",lags=1)
+
+cat("Interest Rate - Annual") 
+summary(dINTEREST)
+cat("Standard deviation: ", sd(dINTEREST))
+ts.plot(dINTEREST, main = "Interest Rate - Annual", ylab="percentage")
+ur.df(dINTEREST,type="drift",lags=0)
+```
+**Key Findings:**  Even after transformation on the House Price Index we see that the DF test statistic (no lags) is - 2.2 which does not clearly rule out a unit root but is accept so we go ahead and analyse ACF and PACF on the growth series since if we use lag=1 the test statistic passes (-9.54). All the models are expected to contain some numbre of lags so I believe this should be fine.
+
+### 2.3 ACF and PACF analysis
+```{r ACF and PACG}
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+acf(PRICE, main = "ACF: House Index - Time Series")
+pacf(PRICE, main = "PACF: House Index - Time Series")
+acf(INTEREST, main = "ACF: Interest Rate - Time Series")
+pacf(INTEREST, main = "PACF: Interest Rate - Time Series")
+
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+acf(dlogPRICE, main = "ACF: House Index - Growth Series")
+pacf(dlogPRICE, main = "PACF: House Index - Growth Series")
+acf(dINTEREST, main = "ACF: Interest Rate - Difference Series")
+pacf(dINTEREST, main = "PACF: Interest Rate - Difference Series")
+```
+#### Interpretations
+The ACF and PACF for House Price Index and Interest Rate look very similar. They both show very strong autocorrelation since in the ACF the spikes fall very gradually. In the PACF we see one spike for for House Price Index Time Series but 2 spikes in the interest rate. Althpugh this would indicate AR(1) and AR(2) model we should not be using analysis from the time series for out model since both series are non-stationary,making their ACF and PACF less credible.
+
+It is better to use the transformed series for ACF and PACF analysis. Looking at the ACF and PACF of the transformed series we see that they are very different now. The House Price Index Growth series shows a much faster fall in autocorrelation than previously. We also see some spike patterns that alternate that are indicative of ARMA model and more specifically a seasonal pattern. The ACF for the interest rates difference series has only one spike we cannot find any gradual reduction in autocorrelation. This looks more like a MA model possibly MA(1).      
+
+Both non-stationary time series prior to transformations show higher autocorrelation. This high autocorrelation is a result of the underlying trends in the original time series. 
+
+
+# QUESTION 2
+
+```{r model1 }
+model1<-dynlm(dlogPRICE ~ lag(dlogPRICE,-1)+ lag(dlogPRICE,-2))
+summary(model1)
+```
+```{r model 2}
+model2<-dynlm(dlogPRICE ~ lag(dlogPRICE,-1)+ lag(dlogPRICE,-2) + lag(dINTEREST,-1) + lag(dINTEREST,-2)) 
+summary(model2)
+```
+
+```{r model 3}
+model3<-dynlm(dlogPRICE ~ lag(dlogPRICE,-1)+ lag(dlogPRICE,-2) + lag(dlogPRICE,-3)+ lag(dlogPRICE,-4)) 
+summary(model3)
+```
+
+```{r model 4}
+model4<-dynlm(dlogPRICE ~ lag(dlogPRICE,-1)+ lag(dlogPRICE,-2) + lag(dlogPRICE,-3)+ lag(dlogPRICE,-4) + lag(dINTEREST,-1) + lag(dINTEREST,-2) ) 
+summary(model4)
+```
+
+#### Conclusion
+
+The Adjusted R-Squares are as follows Model 1 - 0.8902, Model 2 - 0.8905, Model 3, - 0.8929, Model 4, - 0.8934
+
+Looking at the adjusted R-squares we see that all the models have very close adjusted r-square. Given that there is not much difference it is probably better to go with the simplest model which is model 1. Univariate vs. Multivariate - On comparing Model 1 and 3 (univariate) vs. Model 2 and 4 (multivariate) we see that there is almost no difference in adjusted r square. Moreover in the model, we see that the coefficients related to interest rate are not significant. Therefore, one can conclude that in this case, the univariate information set is clearly more valuable than a multivariate information set.
+
+# Question 3
+
+### 3.1 Read Time Series for Quarterly Data
+```{r read data on quarterly house price and interest rate}
+#View(data_quarterly)
+PRICE <- ts(data_quarterly$HOUSE_INDEX, frequency = 4, start = c(1987,1,1))
+INTEREST <- ts(data_quarterly$INTEREST_RATE, frequency = 4, start = c(1987,1,1))
+```
+
+### 1.2 Basic EDA
+```{r eda on quarterly data}
+cat("House Price - quarterly") 
+summary(PRICE)
+cat("Standard deviation: ", sd(PRICE))
+ts.plot(PRICE, main = "House Price Index - quarterly", ylab="percentage")
+ur.df(PRICE,type="drift",lags=0)
+
+cat("Interest Rate - quarterly") 
+summary(INTEREST)
+cat("Standard deviation: ", sd(INTEREST))
+ts.plot(INTEREST, main = "Interest Rate - quarterly", ylab="percentage")
+ur.df(INTEREST,type="drift",lags=0)
+```
+
+**Both time series have a unit root.**  We will transform the times eries and use the Growth series for house price index and use the first difference for interest rate.
+
+```{r eda quarterly}
+dlogPRICE <- diff(log(PRICE))
+dINTEREST <- diff(INTEREST)
+cat("House Price - Quarterly") 
+summary(dlogPRICE)
+cat("Standard deviation: ", sd(dlogPRICE))
+ts.plot(dlogPRICE, main = "House Price - Quarterly", ylab="percentage")
+ur.df(dlogPRICE,type="drift",lags=1)
+
+cat("Interest Rate - Quarterly") 
+summary(dINTEREST)
+cat("Standard deviation: ", sd(dINTEREST))
+ts.plot(dINTEREST, main = "Interest Rate - Quarterly", ylab="percentage")
+ur.df(dINTEREST,type="drift",lags=0)
+```
+
+### 2.3 ACF and PACF analysis
+```{r ACF and PACF quarterly}
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+acf(PRICE, main = "ACF: House Index - Time Series")
+pacf(PRICE, main = "PACF: House Index - Time Series")
+acf(INTEREST, main = "ACF: Interest Rate - Time Series")
+pacf(INTEREST, main = "PACF: Interest Rate - Time Series")
+
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+acf(dlogPRICE, main = "ACF: House Index - Growth Series")
+pacf(dlogPRICE, main = "PACF: House Index - Growth Series")
+acf(dINTEREST, main = "ACF: Interest Rate - Difference Series")
+pacf(dINTEREST, main = "PACF: Interest Rate - Difference Series")
+```
+
+**Key Findings**
+Looking at the quarterly data time series the overall trend pattern is the same. Both time series have a unit root which we remove by transformations. 
+
+The ACFs for both time series show high autocorrelation values similar to the annual data. Looking at the PACF for time series for for House Price Index we see a single spike indicating AR(1) model. The PACF of Interest Rate Time Series has 2 spikes indicating AR(1) and AR(2). 
+
+However, as mentioned previously we will not be using the times series to create models as it is not stationary and has stochastic trend. The ACF for  House Index - Growth Series has weaker auto correlations as compared to the time series. The number of spikes for each cycle is less about 4 as compared to the monthly data. The seasonality is there for for both the series but with different periodicity. Monthly = 12 and Quarterly = 4. The ACF interest Rate difference series has no reducing spikes and the PACf has only 1 spike. This looks almost like white noise or MA(1) process. 
+
+The ACF and PACF changes very similarly as seen in question 1. The overall patterns also seem quite similar suggesting similar models. A difference is in the frequency of the seasonality in the patterns.  
+
+
+# QUESTION 4
+
+### 4.1 Models
+
+```{r model 5}
+model5<-dynlm(dlogPRICE ~ lag(dlogPRICE,-1))
+summary(model5)
+```
+
+```{r model 6}
+model6<-dynlm(dlogPRICE ~ lag(dlogPRICE,-1)+ lag(dlogPRICE,-2))
+summary(model6)
+```
+
+```{r model 7}
+model7<-dynlm(dlogPRICE ~ lag(dlogPRICE,-1)+ lag(dlogPRICE,-2) + lag(dlogPRICE,-3))
+summary(model7)
+```
+
+```{r model 8}
+model8<-dynlm(dlogPRICE ~ lag(dlogPRICE,-1)+ lag(dlogPRICE,-2) + lag(dlogPRICE,-3) + lag(dlogPRICE,-4))
+summary(model8)
+```
+The Adjusted R-Squares for the Annual data  - Model 1 - 0.8902, Model 2 - 0.8905, Model 3, - 0.8929, Model 4, - 0.8934
+The Adjusted R-Squares for the Quarterly data - Model 5 - 0.3571 ,Model 6 - 0.38.36 ,Model 7 - 0.7233 ,Model 8  - 0.7212
+
+Given all these models I would go for Model 1 or Model 4. Comparing quarterly data models to monthly data models clearly shows a drop in the explanatory power which is possibly due to there being less data points for creating a model.
+
+I decided to go for Model 1 as it has quite high R-square and is simple. 
+
+### 4.2 Forecasting 
+
+```{r setting up the model}
+# Resetting out data since PRICE was used for both data  
+PRICE <- ts(data_monthly$HOUSE_INDEX, frequency = 12, start = c(1987,1,1))
+dlogPRICE <- diff(log(PRICE))
+g <- dlogPRICE
+
+# we predict for 50 periods
+n = 50
+last = length(g) - n
+```
+
+```{r fixed scheme}
+fcast1<-numeric(n) 
+coef1<-numeric(n)
+model<-dynlm(g ~ lag(g,-1), start=c(1987,1), end=c(2018,12)) #fit AR(1)
+for (i in 1:n){ #start a for loop
+  fcast1[i]<-coef(model)[1]+coef(model)[2]*g[last+i] 
+  coef1[i]<-coef(model)[2]
+} #end the loop
+fcast1
+f1<-ts(fcast1, frequency = 12, start=c(2019,1))
+c1<-ts(coef1, frequency = 12, start=c(2019,1))
+```
+```{r Recursive Scheme}
+#Recursive Scheme
+fcast2<-numeric(n)
+coef2<-numeric(n)
+for (i in 1:n){ 
+  model<-dynlm(g ~ lag(g,-1), start=c(1987,1), end=c(2018,0+i)) 
+  fcast2[i]<-coef(model)[1]+coef(model)[2]*g[last+i]
+  coef2[i]<-coef(model)[2]
+} 
+fcast2
+f2<-ts(fcast2, frequency = 12, start=c(2019,1))
+c2<-ts(coef2, frequency = 12, start=c(2019,1))
+```
+
+```{r Rolling Scheme}
+#Rolling Scheme
+fcast3<-numeric(n)
+coef3<-numeric(n)
+for (i in 1:n){ 
+  model<-dynlm(g ~ lag(g,-1), start=c(1987,0+i), end=c(2018,0+i)) #fit AR(1), note that both "start" and "end" depend on i
+  fcast3[i]<-coef(model)[1]+coef(model)[2]*g[last+i] 
+  coef3[i]<-coef(model)[2]
+} 
+fcast3
+f3<-ts(fcast3, frequency = 12, start=c(2019,1))
+c3<-ts(coef3, frequency = 12, start=c(2019,1))
+```
+
+
+```{r Plot all the forecasts}
+g0<-window(g,start=c(2018,1))
+plot(g0,col='black',main = "House Price Index, Monthly",ylab = "Growth rate",xlab = "Monthly")
+lines(f1,col='blue')
+lines(f2,col='red')
+lines(f3,col='green')
+legend("bottomleft", legend=c("Actual", "Fixed","Recursive","Rolling"), lty=c(1,1,1,1), col=c( "black","red", "blue","green"))
+```
+```{r}
+c2
+```
+
+```{r plot the regression coefficients}
+plot(c1,col='blue',main = "Coefficients of Regression ",xlab = "Monthly",ylim = c(0.88,0.92))
+lines(c2,col='red')
+lines(c3,col='green')
+
+legend("bottomleft", legend=c("Fixed","Recursive","Rolling"), lty=c(1,1,1,1), col=c("blue", "red","green"))
+```
+
+**Conclusion: ** We did the forecast using three schemes. 1. Fixed forecast 2. Recursive Forecast 3. Rolling Forecast. Although the forecast values are slightly different when plotting we see that the forecast of all three schemes are quite similar and all the lines  overalap significantly.
+
+Looking at the recursion coefficient plots we see that the recursive and rolling forecast coefficients increase around the time of the sudden rise in home prices that happened in 2021, 2022 . The scale is highly zoomed though. 
+

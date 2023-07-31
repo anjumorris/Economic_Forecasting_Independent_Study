@@ -1,0 +1,340 @@
+---
+title: "Chapter9 Summary"
+output:
+  html_notebook: default
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+## Setup
+
+```{r setup the directory}
+setwd("/Users/anjali/Documents/university/Econ_5305/code_directory/ch9_summary_submission/")
+rm(list = ls())
+```
+
+```{r imports}
+library(openxlsx)
+library(readxl)
+library(ggplot2)
+library(dynlm)
+library(forecast)
+library(urca)
+library(lubridate)
+library(TSstudio)
+```
+
+```{r storage }
+# create a vector to store reference to all the models
+model_names <- c()
+model_aic <- c()
+model_bic <- c()
+model_cor <- c()
+model_stationary <- c()
+model_invertible <-c()
+model_res_box_text <- c()
+```
+
+```{r function to store stuff}
+store.function <- function(name = "None",this_model,DATA,stationary = TRUE,invertible = TRUE){
+  model_names <<- append(model_names,name)
+  model_aic <<- append(model_aic,AIC(this_model))
+  model_bic <<- append(model_bic,BIC(this_model))
+  this_cor <<- cor(fitted(this_model), DATA, use="pairwise.complete.obs")^2
+  model_cor<<-append(model_cor,this_cor)
+  this_res_box <<- Box.test(this_model$residuals, type="Ljung-Box")
+  model_res_box_text<<-append(model_res_box_text,this_res_box$p.value)
+  model_stationary <<- append(model_stationary,stationary)
+  model_invertible <<- append(model_invertible,invertible)  
+}
+```
+
+# From Chapter 8
+```{r Read Data on house prices in San Diego and Seattle}
+data_q2 <- read_excel("q2_q3_housing.xlsx", sheet ="SanDiego")
+raw_san_diego <- ts(data_q2[ , c( "Index_NSA" )], start = c(1975, 1), frequency = 12)
+
+# We are aggregating the index so that it is in quarterly form which is comparable to data model sample from the text book. 
+san_diego <- aggregate(raw_san_diego, nfrequency=4, FUN=mean)
+```
+
+```{r Preliminary EDA}
+cat("House Price Index - San Diego") 
+summary(san_diego)
+cat("Standard deviation: ", sd(san_diego))
+ts.plot(san_diego)
+ur.df(san_diego,type="drift",lags=0)
+```
+
+**Notes:** The series has a unit root and there is a stochastic trend. It appears to be a random walk with drift. We will look at the first difference / difference(log) of the series. In the textbook section 8.3 modeling for the the house price index has been done on the Growth Function (diff(log)). 
+
+```{r Transformations for sandiego }
+d_san_diego <- diff(san_diego)
+dlog_san_diego <- diff(log(san_diego))
+par(mfrow=c(2,1) , mar = c(2, 3, 2, 3))
+ts.plot(d_san_diego)
+ts.plot(dlog_san_diego)
+ur.df(d_san_diego,type="drift",lags=0)
+ur.df(dlog_san_diego,type="drift",lags=0)
+```
+** Notes:** Both the 1st difference and Growth Series do not have a unit root. We will do ACF and PACF analysis on the first difference + Growth series to see if the AR(4) model previously identified is still preferred. In general, we prefer the different of log rather than the difference only because it has good Interpretation, growth rate, and it helps to make the variance stationary.
+
+```{r ACF and PACF for San Diego}
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+acf(d_san_diego, main = "ACF - San Diego (1st Diff)")
+pacf(d_san_diego, main = "PACF - San Diego (1st Diff)")
+acf(dlog_san_diego, main = "ACF - San Diego (Growth)")
+pacf(dlog_san_diego, main = "PACF - San Diego (Growth)")
+```
+**Notes: ** Looking at the PACF we see that there are many more prominent spikes upto 7 as compared to the model in the textbook where there are spikes only till lag = 4. The ACF and PACF here indicate AR(4) and AR(7) models for the growth series. AR(1) is marginally indicated.
+For chapter 9 we are required to generate the forecasting results for : AR(4), AR(5), and ARMA(2,4)
+
+# In Sample Models before answering the questions
+
+```{r AR 4 model assessment}
+sandiego_AR4 <- arima(dlog_san_diego, order=c(4,0,0))
+sandiego_AR4
+
+cat("\nModel R^2 =  ")
+cat(cor(fitted(sandiego_AR4),dlog_san_diego , use="pairwise.complete.obs")^2)
+cat("\nBox Test on the Residuals:  ")
+Box.test(sandiego_AR4$residuals, type="Ljung-Box")
+
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+plot(sandiego_AR4)
+res_AR4 <- residuals(sandiego_AR4)
+acf(res_AR4)
+pacf(res_AR4)
+store.function("San Diego AR(4)",sandiego_AR4,dlog_san_diego,TRUE,TRUE)
+```
+
+store.function("Seattle ARMA(1,0,1)",seattle_ar1ma1,train_seattle,TRUE,TRUE)
+
+```{r AR 5 model assessment}
+sandiego_AR5 <- arima(dlog_san_diego, order=c(5,0,0))
+sandiego_AR5
+cat("\nModel R^2 =  ")
+cat(cor(fitted(sandiego_AR5),dlog_san_diego , use="pairwise.complete.obs")^2)
+cat("\nBox Test on the Residuals:  ")
+Box.test(sandiego_AR5$residuals, type="Ljung-Box")
+
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+plot(sandiego_AR5)
+res_AR5 <- residuals(sandiego_AR5)
+acf(res_AR5)
+pacf(res_AR5)
+store.function("San Diego AR(5)",sandiego_AR5,dlog_san_diego,TRUE,TRUE)
+```
+```{r ARMA (2,4) model assessment}
+sandiego_AR_2_MA_4 <- arima(dlog_san_diego, order=c(2,0,4))
+sandiego_AR_2_MA_4
+cat("\nModel R^2 =  ")
+cat(cor(fitted(sandiego_AR_2_MA_4),dlog_san_diego , use="pairwise.complete.obs")^2)
+cat("\nBox Test on the Residuals:  ")
+Box.test(sandiego_AR_2_MA_4$residuals, type="Ljung-Box")
+
+par(mfrow=c(2,2) , mar = c(3, 2, 3, 2))
+plot(sandiego_AR_2_MA_4)
+res_ARMA <- residuals(sandiego_AR_2_MA_4)
+acf(res_ARMA)
+pacf(res_ARMA)
+store.function("San Diego ARMA(2,4)",sandiego_AR_2_MA_4,dlog_san_diego,TRUE,TRUE)
+```
+
+```{r All models print}
+# combine everything into 1 large data frame
+all_models <- data.frame(model_names, model_aic, model_bic, model_cor, model_res_box_text,model_stationary, model_invertible)
+all_models
+```
+#### All models have been setup and in sample evaluations are done.
+
+# Question 3 Forecast Optimality Tests
+
+```{r Create estimation prediction sample}
+prediction_size <- round(length(dlog_san_diego)*0.10,0) + 1
+split <- ts_split(ts.obj = dlog_san_diego, sample.out = prediction_size)
+es <- split$train
+ps <- split$test
+plot(es, ylab="San Diego House Price Index - Growth")
+lines(ps,col = "red")
+
+estimation_size <- length(es)
+length(es)
+length(ps)
+```
+
+```{r Forecast Optimality Tests Model 1 }
+# Model 1 AR(4)
+fcast1<-numeric(prediction_size) 
+ferror1<-numeric(prediction_size) 
+loss1<-numeric(prediction_size) 
+
+for (i in  1: prediction_size) {
+refit_AR4 <- Arima(dlog_san_diego[1:estimation_size + i], model=sandiego_AR4)
+fcast1[i]<-forecast(refit_AR4, h=1)$mean
+ferror1[i] <- ps[i] - fcast1[i]
+loss1[i] <- ferror1[i]^2
+}
+
+mpetest1 <- lm(ferror1 ~ 1)
+summary(mpetest1)
+
+IETest1 <- lm(ferror1 ~ fcast1)
+summary(IETest1)
+```
+
+```{r Forecast Optimality Tests Model 2 }
+# Model 2 AR(5)
+fcast2<-numeric(prediction_size) 
+ferror2<-numeric(prediction_size) 
+loss2<-numeric(prediction_size) 
+
+for (i in  1: prediction_size) {
+refit_AR5 <- Arima(dlog_san_diego[1:estimation_size + i], model=sandiego_AR5)
+fcast2[i]<-forecast(refit_AR5, h=1)$mean
+ferror2[i] <- ps[i] - fcast2[i]
+loss2[i] <- ferror2[i]^2
+}
+mpetest2 <- lm(ferror2 ~ 1)
+summary(mpetest2)
+
+IETest2 <- lm(ferror2 ~ fcast2)
+summary(IETest2)
+```
+
+```{r Forecast Optimality Tests Model 3 }
+# Model 3 ARMA(2,4)
+fcast3<-numeric(prediction_size) 
+ferror3<-numeric(prediction_size) 
+loss3<-numeric(prediction_size) 
+
+for (i in  1: prediction_size) {
+refit_ARMA24 <- Arima(dlog_san_diego[1:estimation_size + i], model=sandiego_AR_2_MA_4)
+fcast3[i]<-forecast(refit_ARMA24, h=1)$mean
+ferror3[i] <- ps[i] - fcast3[i]
+loss3[i] <- ferror3[i]^2
+}
+mpetest3 <- lm(ferror3 ~ 1)
+summary(mpetest3)
+
+IETest3 <- lm(ferror3 ~ fcast3)
+summary(IETest3)
+```
+
+```{r Naive Model }
+#Naive Model
+fcast_naive<-numeric(prediction_size) 
+ferror_naive<-numeric(prediction_size) 
+loss_naive<-numeric(prediction_size)
+start_index = length(dlog_san_diego) - prediction_size
+
+for (i in 1:prediction_size){ 
+  fcast_naive[i]<-dlog_san_diego[start_index -1 + i] 
+  ferror_naive[i]<-dlog_san_diego[start_index+i]- fcast_naive[i]
+  loss_naive[i] <-ferror_naive[i]^2
+ } 
+
+mpetest_naive <- lm(ferror_naive ~ 1)
+summary(mpetest_naive)
+
+IETest_naive <- lm(ferror_naive ~ fcast_naive)
+summary(IETest_naive)
+```
+```{r Average Model }
+#Average Model - taking average of last 6 observations
+fcast_avg<-numeric(prediction_size) 
+ferror_avg<-numeric(prediction_size) 
+loss_avg<-numeric(prediction_size)
+start_index = length(dlog_san_diego) - prediction_size
+
+for (i in 1:prediction_size){ 
+  fcast_avg[i]<-(dlog_san_diego[start_index -1 + i] + dlog_san_diego[start_index -2 + i]  + dlog_san_diego[start_index -3 + i] + dlog_san_diego[start_index -4 + i] + dlog_san_diego[start_index -5 + i] + dlog_san_diego[start_index -6 + i])/6
+  
+  ferror_avg[i]<-dlog_san_diego[start_index+i]- fcast_avg[i]
+  loss_avg[i] <-ferror_avg[i]^2
+ } 
+
+mpetest_avg <- lm(ferror_avg ~ 1)
+summary(mpetest_avg)
+
+IETest_avg <- lm(ferror_avg ~ fcast_avg)
+summary(IETest_avg)
+```
+Based on the tests only the ARMA(2,4) is viable all models are viable the p-value is 0.848 for MPE Test and p-value = 0.6067 for IET. Model 1 and Model 2 both fail on the IET test.Also, we can reject the null hypothesis for the IET test with confidence of 90% as seen in the t-statistic of 0.0578(Naive Model)  and 0.0709 (Average Model).    
+
+# Question 4 Assessment of Forecasts
+
+```{r Assessment of Forecasts}
+cat("Model 1: \n")
+accuracy(fcast1, ps)
+MSE1 <- mean(loss1)
+cat("MSE: ", MSE1)
+
+cat("\n\nModel 2: \n")
+accuracy(fcast2, ps)
+MSE2 <- mean(loss2)
+cat("MSE: ", MSE2)
+
+cat("\n\nModel 3: \n")
+accuracy(fcast3, ps)
+MSE3 <- mean(loss3)
+cat("MSE: ", MSE3)
+
+cat("\n\nNaive Model: \n")
+accuracy(fcast_naive, ps)
+MSE_naive <- mean(loss_naive)
+cat("MSE: ", MSE_naive)
+
+cat("\n\n6 period average Model: \n")
+accuracy(fcast_avg, ps)
+MSE_avg <- mean(loss_avg)
+cat("MSE: ", MSE_avg)
+```
+
+**Q4: Conclusion:** All the other alternate models got rejected in previous section. So even if they have lower MSE values we will go with the ARMA (2,4) model 3. MSE = 0.0002008445
+
+## Question 5: Consider MSE and simpler models 
+We have already created the Naive Model and the 6 period weighted average model. If we look only at the MSE we see that the naive model has the lowest MSE. However, naive model does not pass the IET test as previously mentioned so we should not consider it. The best model that passes all the test is the ARMA(2,4) model. 
+
+## Question 6: Combining the forecasts
+```{r Combo1 - equal weighted}
+combo1 <- (fcast1 + fcast2 + fcast3)/3
+ferror_combo1 <- ps - combo1
+loss_combo1 <- ferror_combo1^2
+MSE1_combo1 <- mean(loss_combo1)
+MSE1_combo1
+```
+
+```{r Combo2 - inverse weighted}
+sumMSE_inv <- (1/MSE1) + (1/MSE2) + (1/MSE3)
+w_ar4 <- (1/MSE1)/sumMSE_inv
+w_ar5 <- (1/MSE2)/sumMSE_inv
+w_24 <- (1/MSE3)/sumMSE_inv
+
+combo2 <- w_ar4*fcast1 + w_ar5*fcast2 + w_24*fcast3
+
+ferror_combo2 <- ps - combo2
+loss_combo2 <- ferror_combo2^2
+MSE1_combo2 <- mean(loss_combo2)
+MSE1_combo2
+```
+
+```{r Combo3 - OLS weighted}
+combo3<-lm(ps~fcast1 + fcast2 +fcast3 )
+summary(combo3)
+
+fcast_combo3<-predict(combo3)
+ferror_combo3 <- ps - fcast_combo3
+loss_combo3 <- ferror_combo3^2
+MSE1_combo3 <- mean(loss_combo3)
+MSE1_combo3
+
+mpetest_combo3 <- lm(ferror_combo3 ~ 1)
+summary(mpetest_combo3)
+
+IETest_combo3 <- lm(ferror_combo3 ~ fcast_combo3)
+summary(IETest_combo3)
+```
+The MSE of these 3 combinations are very close to each other, but the last one, optimal linear combination of ar4, ar5 and arma(2,4)  has the smallest MSE.
